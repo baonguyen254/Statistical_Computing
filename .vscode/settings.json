@@ -1,0 +1,8 @@
+{
+  "r.helpPanel.cacheIndexFiles": "Workspace",
+  "r.plot.useHttpgd": true,
+  "r.rmarkdown.preview.autoShowPreviewToSide": true,
+  "r.rmarkdown.chunkArgs": [
+    "eval = FALSE"
+  ]
+}

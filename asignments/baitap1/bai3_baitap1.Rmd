@@ -1,0 +1,404 @@
+---
+title: "bài tập 3"
+author: "Nguyễn Quốc Bảo"
+team: "B"
+date: "2025-01-11"
+output: html_notebook
+---
+
+```{r include=FALSE}
+if (!require(viridis)) { install.packages("viridis") }
+if (!require(rmarkdown)) { install.packages("rmarkdown") }
+if (!require(languageserver)) { install.packages("languageserver") }
+library(viridis) # for color
+library(rmarkdown) # for html_notebook
+library(knitr) # for tables
+```
+
+Bài tập 3. Có 46 vụ tràn dầu thô với khối lượng ít nhất là 1000 thùng từ tàu chở dầu trên
+vùng biển Hoa Kỳ trong giai đoạn 1974-1999. Tập tin oilspills.dat chứa dữ liệu sau:
+
+- year : năm thứ i;
+
+- spills : số vụ tràn dầu Ni trong năm thứ i;
+
+- importexport : lượng dầu ước tính được vận chuyển qua vùng biển Hoa Kỳ như một
+phần của hoạt động xuất nhập khẩu của Hoa Kỳ trong năm thứ i, được điều chỉnh cho
+sự cố tràn ở vùng biển quốc tế hoặc nước ngoài, $b_{i1}$ ;
+
+- domestic : lượng dầu được vận chuyển qua vùng biển Hoa Kỳ trong các chuyến hàng
+trong nước trong năm thứ i, $b_{i2}$.
+
+
+# Read Data
+```{r}
+dataset <- read.table("/home/baron/BaoBao/master_2024/Statistical_Computing/dataset/oilspills.dat", header = TRUE)
+data <- list(N = dataset$spills, b1 = dataset$importexport, b2 = dataset$domestic)
+```
+
+#### (a) Xác định hàm log-likelihood cho các hệ số $\alpha_1$ và $\alpha_2$.
+
+Hàm mật độ của phân phối Poisson là:
+
+$$
+P(N_i = n_i | \lambda) = \frac{\lambda_i^{n_i} e^{-\lambda_i}}{n_i!}
+$$
+
+trong đó:
+
+- $\lambda_i = \alpha_1 b_{i1} + \alpha_2 b_{i2}$ là kỳ vọng số vụ tràn dầu trong năm thứ
+phụ thuộc vào các tham số $\alpha_1$ và $\alpha_2$
+- $N_i$ là số vụ tràn dầu trong năm thứ $i$
+- $b_{i1}$ và $b_{i2}$ lần lượt là lượng dầu vận chuyển quốc tế và trong nước.
+
+Hàm likelihood là:
+$$
+L(\alpha_1, \alpha_2) = \prod_{i=1}^{n} P(N_i = n_i | \alpha_1, \alpha_2) = \prod_{i=1}^{n} \frac{\lambda_i^{n_i} e^{-\lambda_i}}{n_i!}
+$$
+
+Hàm log-likelihood là:
+$$
+\log L(\alpha_1, \alpha_2) = \sum_{i=1}^{n} \log P(N_i = n_i | \alpha_1, \alpha_2) = \sum_{i=1}^{n} \log \left( \frac{\lambda_i^{n_i} e^{-\lambda_i}}{n_i!} \right)
+$$
+$$
+\log L(\alpha_1, \alpha_2) = \sum_{i=1}^{n} \left( n_i \log \lambda_i - \lambda_i - \log n_i! \right)
+$$
+
+```{r}
+# lambda function
+lambda <- function(alpha1, alpha2, data) {
+  return(alpha1 * data$b1 + alpha2 * data$b2)
+}
+
+# log-likelihood function
+log_likelihood <- function(alpha1, alpha2, data) {
+  lambda_i <- lambda(alpha1, alpha2, data)
+  return(sum(log(lambda_i) * data$N - lambda_i))
+}
+
+# plot log-likelihood
+alpha1 <- seq(0, 5, by = 0.1)
+alpha2 <- seq(0, 5, by = 0.1)
+
+logL_matrix <- matrix(0, nrow = length(alpha1), ncol = length(alpha2))
+
+for (i in 1:length(alpha1)) {
+  for (j in 1:length(alpha2)) {
+    logL_matrix[i, j] <- log_likelihood(alpha1[i], alpha2[j], data)
+  }
+}
+contour(alpha1, alpha2, logL_matrix, nlevels = 10, xlab = "alpha1", ylab = "alpha2")
+```
+
+#### (b) Viết các bước giải thuật để xác định ước lượng MLE của $\alpha_1$ và $\alpha_2$ bằng phương pháp Newton. Viết một chương trình thi hành giải thuật này.
+
+Bước 1: Tính đạo hàm của hàm log-likelihood
+
+$$
+\frac{\partial \log L(\alpha_1, \alpha_2)}{\partial \alpha_1} = \sum_{i=1}^{n} (\frac{b_{i1} n_i}{\lambda_i} - b_{i1})
+$$
+
+$$
+\frac{\partial \log L(\alpha_1, \alpha_2)}{\partial \alpha_2} = \sum_{i=1}^{n} (\frac{b_{i2} n_i}{\lambda_i} - b_{i2})
+$$
+
+Bước 2: Tính đạo hàm cấp 2 của hàm log-likelihood
+
+$$
+\frac{\partial^2 \log L(\alpha_1, \alpha_2)}{\partial \alpha_1^2} = \sum_{i=1}^{n} (- \frac{b_{i1}^2 n_i}{\lambda_i^2})
+$$
+
+$$
+\frac{\partial^2 \log L(\alpha_1, \alpha_2)}{\partial \alpha_1 \partial \alpha_2} = \sum_{i=1}^{n} (-\frac{b_{i1} b_{i2} n_i}{\lambda_i^2})
+$$
+
+$$
+\frac{\partial^2 \log L(\alpha_1, \alpha_2)}{\partial \alpha_2^2} = \sum_{i=1}^{n} (-\frac{b_{i2}^2 n_i}{\lambda_i^2})
+$$
+
+Bước 3: triển khai phương pháp Newton
+
+$$
+\begin{pmatrix}
+\frac{\partial^2 \log L(\alpha_1, \alpha_2)}{\partial \alpha_1^2} & \frac{\partial^2 \log L(\alpha_1, \alpha_2)}{\partial \alpha_1 \partial \alpha_2} \\
+\frac{\partial^2 \log L(\alpha_1, \alpha_2)}{\partial \alpha_2 \partial \alpha_1} & \frac{\partial^2 \log L(\alpha_1, \alpha_2)}{\partial \alpha_2^2}
+\end{pmatrix}
+\begin{pmatrix}
+\Delta \alpha_1 \\
+\Delta \alpha_2
+\end{pmatrix} = -\begin{pmatrix}
+\frac{\partial \log L(\alpha_1, \alpha_2)}{\partial \alpha_1} \\
+\frac{\partial \log L(\alpha_1, \alpha_2)}{\partial \alpha_2}
+\end{pmatrix}
+$$
+
+Bước 4: cập nhật $\theta = (\alpha_1, \alpha_2)$ và lặp lại cho đến khi hội tụ
+
+$$
+\theta^{(t+1)} = \theta^{(t)} - H^{-1} \nabla \log L(\theta^{(t)})
+$$
+
+```{r}
+log_likelihood_prime <- function(alpha1, alpha2, data) {
+  lambda_i <- lambda(alpha1, alpha2, data)
+  grad1 <- sum(data$N * data$b1 / lambda_i - data$b1)
+  grad2 <- sum(data$N * data$b2 / lambda_i - data$b2)
+  return(c(grad1, grad2))
+}
+
+log_likelihood_2prime <- function(alpha1, alpha2, data) {
+  lambda_i <- lambda(alpha1, alpha2, data)
+  h11 <- sum(-data$N * (data$b1^2) / lambda_i^2)
+  h22 <- sum(-data$N * (data$b2^2) / lambda_i^2)
+  h12 <- sum(-data$N * (data$b1 * data$b2) / lambda_i^2)
+  return(matrix(c(h11, h12, h12, h22), nrow = 2, ncol = 2, byrow = TRUE))
+}
+
+newton_raphson <- function(alpha_init, data, max_iter = 100, tol = 1e-4) {
+  alpha <- alpha_init
+  vals <- matrix(NA, nrow = max_iter + 1, ncol = 2)
+  vals[1,] <- alpha
+  for (i in 1:max_iter) {
+    gradient <- log_likelihood_prime(alpha[1], alpha[2], data)
+    hessian <- log_likelihood_2prime(alpha[1], alpha[2], data)
+    update <- solve(hessian) %*% gradient
+    alpha <- alpha - as.numeric(update)
+    vals[i + 1,] <- alpha
+    if (sqrt(sum(update^2)) < tol) break
+  }
+  return(list(alpha = alpha, vals = vals))
+}
+
+alpha_init <- c(0.1, 0.2)
+alpha_mle_newton <- newton_raphson(alpha_init, data)
+# contour(alpha1, alpha2, logL_matrix, nlevels = 10, xlab = "alpha1", ylab = "alpha2")
+# points(alpha_mle_newton$vals[, 1], alpha_mle_newton$vals[, 2], pch = 16, type = "b")
+print(alpha_mle_newton$alpha)
+```
+
+
+
+#### (c) Viết các bước giải thuật để xác định ước lượng MLE của $\alpha_1$ và $\alpha_2$ bằng phương pháp Fisher Scoring. Viết một chương trình thi hành giải thuật này. So sánh với kết quả câu (b).
+
+Công thức Fisher Scoring:
+
+$$
+\theta^{(t+1)} = \theta^{(t)} + I^{-1}(\theta^{(t)}) \nabla L(\theta^{(t)})
+$$
+
+trong đó:
+
+- $\theta = (\alpha_1, \alpha_2)$
+
+- $I(\theta^{(t)}) = E[-\nabla^2 \log L(\theta^{(t)})]$ là ma trận thông tin Fisher
+
+```{r}
+fisher_information <- function(alpha1, alpha2, data) {
+  lambda_i <- lambda(alpha1, alpha2, data)
+  I_11 <- sum(data$N * (data$b1^2) / lambda_i^2)
+  I_12 <- sum(data$N * (data$b1 * data$b2) / lambda_i^2)
+  I_22 <- sum(data$N * (data$b2^2) / lambda_i^2)
+  fisher_matrix <- matrix(c(I_11, I_12, I_12, I_22), nrow = 2, ncol = 2)
+  return(fisher_matrix)
+}
+
+# Fisher Scoring method
+fisher_scoring <- function(data, alpha_init, tol = 1e-3, max_iter = 100) {
+  alpha <- alpha_init
+  vals <- matrix(NA, nrow = max_iter + 1, ncol = 2)
+  vals[1,] <- alpha
+  for (iter in 1:max_iter) {
+    grad <- log_likelihood_prime(alpha[1], alpha[2], data)
+    fisher_info <- fisher_information(alpha[1], alpha[2], data)
+    update <- solve(fisher_info) %*% grad
+    alpha <- alpha + as.vector(update)
+    vals[iter + 1,] <- alpha
+    if (sqrt(sum(update^2)) < tol) break
+  }
+  return(list(alpha = alpha, vals = vals))
+}
+
+alpha_init <- c(0.3, 0.1)
+alpha_mle_fisher <- fisher_scoring(data, alpha_init)
+# contour(alpha1, alpha2, logL_matrix, nlevels = 10, xlab = "alpha1", ylab = "alpha2")
+# points(alpha_mle_fisher[1], alpha_mle_fisher[2], pch = 16, type = "b")
+print(alpha_mle_fisher$alpha)
+
+difference <- abs(alpha_mle_newton$alpha - alpha_mle_fisher$alpha)
+print(paste("Difference in alpha1:", difference[1]))
+print(paste("Difference in alpha2:", difference[2]))
+```
+
+
+
+
+#### (d) Ước lượng sai số chuẩn (standard errors) của ước lượng MLE.
+```{r}
+compute_se <- function(alpha, data) {
+  I <- fisher_information(alpha[1], alpha[2], data)
+  cov_matrix <- solve(I)
+  se <- sqrt(diag(cov_matrix))
+  return(se)
+}
+
+alpha_init <- c(0.1, 0.1)
+se_newton <- compute_se(alpha_mle_newton$alpha, data)
+se_fisher <- compute_se(alpha_mle_fisher$alpha, data)
+print(paste("Standard errors (Newton):", se_newton))
+print(paste("Standard errors (Fisher):", se_fisher))
+```
+
+
+
+#### (e) Áp dụng phương pháp quasi-Newton với hai cách chọn $M^{(0)}$ : (1) ma trận đơn vị âm và (2) ma trận thông tin Fisher, $-I(\alpha^{(0)})$ . So sánh tính ổn định, tốc độ của hai cách chọn này.
+
+Công thức Quasi-Newton:
+$$
+\theta^{t+1} = \theta^{t} - \alpha^{t} (M^{(t)})^{-1} \nabla l(\theta^{(t)})
+$$
+trong đó:
+
+- $\theta = (\alpha_1, \alpha_2)$
+
+$$
+M^{(t+1)} = M^{(t)} - \frac{M^{(t)} h^{(t)} (h^{(t)} M^{(t)})^T }{(h^{(t)})^T M^{(t)} h^{(t)}} + \frac{u^{(t)} (u^{(t)})^T}{(h^{(t)})^T u^{(t)}}
+$$
+trong đó:
+
+- $h^{(t)} = \theta^{(t+1)} - \theta^{(t)}$
+
+- $u^{(t)} = \nabla l(\theta^{(t+1)}) - \nabla l(\theta^{(t)})$
+
+- $M$ là ma trận xác định dương
+
+
+```{r}
+# Quasi-Newton BFGS method
+quasi_newton_bfgs <- function(data, alpha_init, M, tol = 1e-6, max_iter = 100) {
+  alpha <- alpha_init
+  learning_rate <- 1
+  vals <- matrix(0, nrow = max_iter + 1, ncol = 2)
+  vals[1,] <- alpha
+
+  for (iter in 1:max_iter) {
+    grad <- log_likelihood_prime(alpha[1], alpha[2], data)
+
+    # Kiểm tra ma trận Fisher Information M có xác định dương không
+    if (any(eigen(M)$values <= 0)) {
+      M <- M + diag(rep(tol, 2))  # Thêm epsilon vào đường chéo nếu M không xác định dương
+    }
+
+    update <- solve(M) %*% grad
+    alpha_new <- alpha - learning_rate * update
+
+    # Kiểm tra alpha_new có hợp lệ không
+    if (any(alpha_new <= 0)) {
+      print("Warning: alpha_new có giá trị âm, điều chỉnh learning_rate")
+      learning_rate <- learning_rate / 2
+      next
+    }
+
+    f_t <- log_likelihood(alpha_new[1], alpha_new[2], data)
+    f_t0 <- log_likelihood(alpha[1], alpha[2], data)
+
+    # Kiểm tra NaN
+    if (is.nan(f_t)) {
+      print("NaN encountered in log-likelihood calculation, adjusting step size")
+      learning_rate <- learning_rate / 2
+      next
+    }
+
+    # Giảm learning rate nếu f_t < f_t0
+    while (f_t < f_t0) {
+      learning_rate <- learning_rate / 2
+      alpha_new <- alpha - learning_rate * update
+      f_t <- log_likelihood(alpha_new[1], alpha_new[2], data)
+
+      if (is.nan(f_t) || learning_rate < 1e-6) {
+        print("Stopping due to NaN or very small learning rate")
+        return(list(alpha = alpha, vals = vals))
+      }
+    }
+
+    # Cập nhật ma trận M theo phương pháp BFGS
+    ht <- alpha_new - alpha
+    ut <- log_likelihood_prime(alpha_new[1], alpha_new[2], data) - grad
+    v <- ut - M %*% ht
+    M_old <- M
+    M <- M - ((M %*% ht %*% t(M %*% ht)) / as.numeric(t(ht) %*% M %*% ht)) +
+      ((ut %*% t(ut)) / as.numeric(t(ht) %*% ut))
+
+    # Kiểm tra điều kiện cập nhật M
+    if (abs((t(v) %*% ht)[1]) < tol) {
+      M <- M_old
+    }
+
+    # Kiểm tra hội tụ
+    if (sqrt(sum(update^2)) < tol) {
+      print(paste("Converged at iteration", iter))
+      break
+    }
+
+    # Cập nhật alpha
+    alpha <- alpha_new
+    vals[iter + 1,] <- alpha
+  }
+
+  if (iter == max_iter) {
+    print(paste("Not converged after", max_iter, "iterations"))
+  }
+
+  return(list(alpha = alpha, vals = vals))
+}
+```
+Chọn $M = \begin{pmatrix} -1 & 0 \\0 & -1 \end{pmatrix}$
+```{r}
+# Initial parameters
+alpha_init <- c(0.3, 0.3)
+M <- -diag(length(alpha_init))
+# Run Quasi-Newton BFGS method
+alpha_mle_quasi_newton_bfgs_identify <- quasi_newton_bfgs(data, alpha_init, M, tol = 1e-6, max_iter = 1000)
+
+# Plot results
+# contour(alpha1, alpha2, logL_matrix, nlevels = 10, xlab = "alpha1", ylab = "alpha2")
+# points(alpha_mle_quasi_newton_bfgs_identify$vals[, 1], alpha_mle_quasi_newton_bfgs_identify$vals[, 2], pch = 16, type = "b")
+print(alpha_mle_quasi_newton_bfgs_identify$alpha)
+```
+
+
+
+
+Chọn $M = -I(\alpha^{(0)})$ là ma trận Fisher thông tin ban đầu.
+
+```{r}
+# Initial parameters
+alpha_init <- c(0.3, 0.3)
+M <- -fisher_information(alpha_init[1], alpha_init[2], data)
+# Run Quasi-Newton BFGS method
+alpha_mle_quasi_newton_bfgs_fisher <- quasi_newton_bfgs(data, alpha_init, M, max_iter = 1000)
+
+# Plot results
+# contour(alpha1, alpha2, logL_matrix, nlevels = 10, xlab = "alpha1", ylab = "alpha2")
+# points(alpha_mle_quasi_newton_bfgs_fisher$vals[, 1], alpha_mle_quasi_newton_bfgs_fisher$vals[, 2], pch = 16, type = "b")
+print(alpha_mle_quasi_newton_bfgs_fisher$alpha)
+```
+
+Nhận xét:
+
+- với M là ma trận đơn vị âm, chậm hơn, không ổn định và không hội tụ.
+
+- với M là ma trận Fisher, nhanh hơn, ổn định và hội tụ.
+
+## (f) Xây dựng một đồ thị biểu diễn vùng tối ưu của hàm log-likelihood và để so sánh các đường đi được thực hiện bởi các phương pháp được sử dụng trong (b), (c) và (e). Chọn vùng vẽ đồ thị và điểm bắt đầu để minh họa tốt nhất các tính năng về hiệu suất của thuật toán.
+
+```{r}
+# Plot results
+contour(alpha1, alpha2, logL_matrix, nlevels = 10, xlab = "alpha1", ylab = "alpha2", main = "Optimization path of log-likelihood")
+points(alpha_mle_newton$vals[, 1], alpha_mle_newton$vals[, 2], pch = 16, col = "red", type = "b")
+points(alpha_mle_fisher$vals[, 1], alpha_mle_fisher$vals[, 2], pch = 16, col = "blue", type = "b")
+points(alpha_mle_quasi_newton_bfgs_identify$vals[, 1], alpha_mle_quasi_newton_bfgs_identify$vals[, 2], pch = 16, col = "green", type = "b")
+points(alpha_mle_quasi_newton_bfgs_fisher$vals[, 1], alpha_mle_quasi_newton_bfgs_fisher$vals[, 2], pch = 16, col = "orange", type = "b")
+legend("topright", legend = c("Newton", "Fisher", "Quasi-Newton (Identity)", "Quasi-Newton (Fisher)"), col = c("red", "blue", "green", "orange"), pch = 16)
+```
+
+
