@@ -1,0 +1,272 @@
+---
+title: "BaiTap2_Cau03"
+author: "Mu Ham Mach A Mine"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+(a) **Áp dụng thuật toán EM để ước lượng θ E-step.**
+
+Dữ liệu quan sát được là x=(x1,x2,x3,x4)=(125,18,20,34).
+
+Dữ liệu bị khuyết là y=(y1,y2,y3,y4,y5), trong đó x1=y1+y2, x2=y3, x3=y4, và x4=y5.
+
+Phân phối đa thức: Dữ liệu y được phân phối theo phân phối đa thức với xác suất q=(q1,q2,q3,q4,q5).
+
+```{r echo= FALSE, out.width = "80%",fig.align="center"}
+knitr::include_graphics("Hinh1.png", error = FALSE)
+```
+
+Giả sử q1=2/(2+θ), q2=θ/(2+θ), q3=1−θ, q4=1−θ, và q5=θ.
+
+Kỳ vọng của y1 và y2: y1 và y2 là các biến ngẫu nhiên có phân phối đa thức với tổng x1=y1+y2.
+
+Kỳ vọng của y1 và y2 được tính dựa trên xác suất của chúng trong phân phối đa thức.
+
+Tính kỳ vọng của y1: y1 có xác suất q1=2/(2+θ).
+
+Tính kỳ vọng của y2: y2 có xác suất q2=θ/(2+θ).
+
+```{r echo= FALSE, out.width = "30%",fig.align="center"}
+knitr::include_graphics("Hinh2.png", error = FALSE)
+```
+
+Sau khi tính được kỳ vọng của các biến bị khuyết y1 và y2 trong E-step, chúng ta cần cập nhật tham số θ sao cho hàm log-likelihood ℓ(θ;x) đạt giá trị lớn nhất.
+
+Hàm log-likelihood trong bài toán này được định nghĩa như sau:
+
+```{r echo= FALSE, out.width = "100%",fig.align="center"}
+knitr::include_graphics("Hinh3.png", error = FALSE)
+```
+
+Để tối đa hóa hàm log-likelihood ℓ(θ;x), chúng ta cần giải phương trình đạo hàm của ℓ(θ;x) theo θ và đặt bằng 0.
+
+Đạo hàm của ℓ(θ;x) theo θ:
+
+```{r echo= FALSE, out.width = "50%",fig.align="center"}
+knitr::include_graphics("Hinh4.png", error = FALSE)
+```
+
+Đặt đạo hàm bằng 0 để tìm θ:
+
+```{r echo= FALSE, out.width = "45%",fig.align="center"}
+knitr::include_graphics("Hinh5.png", error = FALSE)
+```
+
+Giải phương trình để tìm θ:
+
+```{r echo= FALSE, out.width = "60%",fig.align="center"}
+knitr::include_graphics("Hinh6.png", error = FALSE)
+```
+
+(b) **Thi hành thuật toán ở câu (a), để tìm ước lượng θ.**
+
+```{r cars}
+# Dữ liệu quan sát được
+x <- c(125, 18, 20, 34)
+
+# Khởi tạo giá trị ban đầu của theta là một số ngẫu nhiên trong khoảng (0, 1)
+theta <- runif(1, min = 0, max = 1)
+
+# Điều kiện dừng: sai số giữa các lần lặp nhỏ hơn 10^-9
+tolerance <- 1e-9
+
+# Lưu lịch sử giá trị theta để vẽ biểu đồ
+theta_history <- numeric(0)
+
+# Bắt đầu vòng lặp EM
+for (i in 1:1000) {  # Giới hạn tối đa 1000 bước lặp để tránh lặp vô hạn
+  # E-step: Tính kỳ vọng của y1 và y2
+  E_y1 <- x[1] * (2 / (2 + theta))
+  E_y2 <- x[1] * (theta / (2 + theta))
+
+  # Lưu giá trị theta cũ để tính sai số
+  theta_old <- theta
+
+  # M-step: Cập nhật theta
+  theta <- (E_y2 + x[4]) / (E_y2 + x[4] + x[2] + x[3])
+
+  # Lưu giá trị theta vào lịch sử
+  theta_history <- c(theta_history, theta)
+
+  # Tính sai số giữa các lần lặp
+  error <- abs(theta - theta_old)
+
+  # Kiểm tra điều kiện dừng
+  if (error < tolerance) {
+    cat("Thuật toán hội tụ sau", i, "bước lặp.\n")
+    break
+  }
+}
+
+# In giá trị cuối cùng của theta
+cat("Giá trị cuối cùng của theta:", theta, "\n")
+
+# Vẽ biểu đồ hội tụ của theta
+plot(theta_history, type = "b", xlab = "Iteration", ylab = "Theta", main = "Hội tụ của Theta qua các bước lặp")
+```
+
+(c) **Thi hành phương pháp EM Gradient để tìm ước lượng θ dựa trên y.**
+
+Gradient-step: Thay vì tối đa hóa hàm log-likelihood, chúng ta cập nhật θθ bằng cách sử dụng gradient của hàm log-likelihood.
+
+Hàm log-likelihood trong bài toán này là:
+
+```{r echo= FALSE, out.width = "100%",fig.align="center"}
+knitr::include_graphics("Hinh3.png", error = FALSE)
+```
+
+Gradient của hàm log-likelihood theo θ là:
+
+```{r echo= FALSE, out.width = "50%",fig.align="center"}
+knitr::include_graphics("Hinh4.png", error = FALSE)
+```
+
+Trong phương pháp gradient, chúng ta cập nhật θ theo công thức:
+
+```{r echo= FALSE, out.width = "100%",fig.align="center"}
+knitr::include_graphics("Hinh7.png", error = FALSE)
+```
+
+```{r}
+# Dữ liệu quan sát được
+x <- c(125, 18, 20, 34)
+
+# Khởi tạo giá trị ban đầu của theta là một số ngẫu nhiên trong khoảng (0, 1)
+theta <- runif(1, min = 0, max = 1)
+
+# Learning rate (tốc độ học)
+eta <- 0.0001
+
+# Điều kiện dừng: sai số giữa các lần lặp nhỏ hơn 10^-9
+tolerance <- 1e-9
+
+# Lưu lịch sử giá trị theta để vẽ biểu đồ
+theta_history <- numeric(0)
+
+# Bắt đầu vòng lặp EM Gradient
+for (i in 1:1000) {  # Giới hạn số bước lặp
+  # E-step: Tính kỳ vọng của y2
+  E_y2 <- x[1] * (theta / (2 + theta))
+
+  # Tính gradient của hàm log-likelihood
+  gradient <- (E_y2 / theta) - ((x[2] + x[3]) / (1 - theta)) + (x[4] / theta)
+
+  # Gradient clipping: Giới hạn gradient để tránh cập nhật quá mức
+  gradient <- ifelse(abs(gradient) > 100, sign(gradient) * 100, gradient)
+
+  # Lưu giá trị theta cũ để tính sai số
+  theta_old <- theta
+
+  # Cập nhật theta bằng phương pháp gradient
+  theta <- theta + eta * gradient
+
+  # Giới hạn giá trị của theta trong khoảng (0, 1)
+  theta <- ifelse(theta < 0, 0.001, theta)
+  theta <- ifelse(theta > 1, 0.999, theta)
+
+  # Lưu giá trị theta vào lịch sử
+  theta_history <- c(theta_history, theta)
+
+  # Tính sai số giữa các lần lặp
+  error <- abs(theta - theta_old)
+
+  # Kiểm tra điều kiện dừng
+  if (error < tolerance) {
+    cat("Phương pháp EM Gradient hội tụ sau", i, "bước lặp.\n")
+    break
+  }
+}
+
+# In giá trị cuối cùng của theta
+cat("Giá trị cuối cùng của theta:", theta, "\n")
+
+# Vẽ biểu đồ hội tụ của theta
+plot(theta_history, type = "b", xlab = "Iteration", ylab = "Theta", main = "Hội tụ của Theta qua các bước lặp (EM Gradient)")
+```
+
+(d) **Thi hành phương pháp quasi-Newton EM tìm ước lượng θ dựa trên y.**
+
+E-step: Tính kỳ vọng của các biến bị khuyết y1 và y2 dựa trên giá trị hiện tại của θ.
+
+Quasi-Newton-step: Sử dụng phương pháp tối ưu hóa bậc hai (như BFGS) để cập nhật θ bằng cách tối đa hóa hàm log-likelihood.
+
+Hàm log-likelihood trong bài toán này là:
+
+```{r echo= FALSE, out.width = "100%",fig.align="center"}
+knitr::include_graphics("Hinh3.png", error = FALSE)
+```
+
+Cập nhật tham số θ
+
+Tại mỗi bước lặp, tham số θ được cập nhật theo công thức:
+
+```{r echo= FALSE, out.width = "85%",fig.align="center"}
+knitr::include_graphics("Hinh8.png", error = FALSE)
+```  
+Cập nhật xấp xỉ Hessian
+
+Xấp xỉ Hessian được cập nhật qua các bước lặp theo công thức BFGS:
+
+```{r echo= FALSE, out.width = "85%",fig.align="center"}
+knitr::include_graphics("Hinh9.png", error = FALSE)
+``` 
+
+
+```{r}
+quasi_newton_em <- function(x, theta, tol = 1e-6, max_iter = 1000) {
+  # Lưu lịch sử giá trị theta để vẽ đồ thị
+  theta_history <- numeric(max_iter)
+
+  for (i in 1:max_iter) {
+    # Bước E: Tính các giá trị kỳ vọng
+    y2 <- x[1] * (theta / (2 + theta))
+    y1 <- x[1] - y2
+
+    # Bước M: Cập nhật theta sử dụng phương pháp BFGS
+    opt <- optim(theta, function(theta) {
+      # Đảm bảo theta nằm trong khoảng (0, 1)
+      if (theta <= 0 || theta >= 1) {
+        return(Inf)  # Trả về giá trị lớn để tránh theta không hợp lệ
+      }
+      -(y2 + x[4]) * log(theta) - (x[2] + x[3]) * log(1 - theta)
+    }, method = "BFGS")  # Sử dụng phương pháp BFGS
+
+    theta_new <- opt$par
+
+    # Lưu giá trị theta để vẽ đồ thị
+    theta_history[i] <- theta_new
+
+    # Kiểm tra sự hội tụ
+    if (abs(theta_new - theta) < tol) {
+      theta_history <- theta_history[1:i]  # Cắt bỏ các giá trị thừa
+      cat("Thuật toán hội tụ sau", i, "bước lặp.\n")
+      break
+    }
+    theta <- theta_new
+  }
+
+  # Vẽ đồ thị theta qua các vòng lặp
+  plot(1:length(theta_history), theta_history, type = "b",
+       xlab = "Vòng lặp", ylab = "Theta",
+       main = "Thuật toán BFGS: Ước lượng Theta")
+  abline(h = theta, col = "red", lty = 2)  # Đường thẳng thể hiện giá trị cuối cùng
+  legend("topright", legend = c("Giá trị cuối cùng"), col = "red", lty = 2)
+
+  return(theta)
+}
+
+# Dữ liệu quan sát được
+x <- c(125, 18, 20, 34)
+
+# Khởi tạo giá trị ban đầu của theta là một số ngẫu nhiên trong khoảng (0, 1)
+theta_init <- runif(1, min = 0, max = 1)
+
+# Chạy thuật toán BFGS
+theta_bfgs_est <- quasi_newton_em(x, theta_init)
+cat("Ước lượng Theta từ thuật toán BFGS:", theta_bfgs_est, "\n")
+```

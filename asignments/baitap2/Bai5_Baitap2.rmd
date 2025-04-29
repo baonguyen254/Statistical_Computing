@@ -1,0 +1,312 @@
+---
+title: "bài 5 - Bài tập 2"
+author: "Nguyễn Quốc Bảo"
+team: "B"
+date: "2025-03-14"
+output: html_notebook
+---
+```{r include=FALSE}
+if (!require(viridis)) { install.packages("viridis") }
+if (!require(rmarkdown)) { install.packages("rmarkdown") }
+if (!require(languageserver)) { install.packages("languageserver") }
+library(viridis) # for color
+library(rmarkdown) # for html_notebook
+library(knitr) # for tables
+```
+**Bài tập 5**. Xét dữ liệu sau về tuổi thọ (lifetimes) của 14 khớp nối bánh răng (gear coupling)
+
+
+\begin{matrix}
+(6.94) & 5.50 & 4.54 & 2.14 & (3.65) & (3.40) & (4.38) \\
+10.24 & 4.56 & 9.42 & (4.55) & (4.15) & 5.64 & (10.23)
+\end{matrix}
+
+
+trong đó, các giá trị nằm trong dấu ngoặc ám chỉ giá trị tuổi thọ của khớp nối bị che khuất
+bên phải (right censoring) bởi vì thiết bị đã được thay thế trước khi khớp nối bánh răng bị
+hỏng.
+Dữ liệu này thường được mô hình với phân phối Weibull có hàm mật độ xác suất
+$$f(x) = abx^{b-1}
+exp(-ax^b)$$,
+với $x > 0$, và hai tham số a và b. (Xem thêm bài tập ..., Bài tập số 1 về chi tiết mô hình).
+Đặt $\theta = (a, b)$.
+
+
+#### Khởi tạo dữ liệu và dữ liệu censor với 0 là bị che khuất và 1 là không che khuất.
+```{r}
+# Thời gian
+data_lifetime <- c(6.94, 5.50, 4.54, 2.14, 3.65, 3.40, 4.38,
+                   10.24, 4.56, 9.24, 4.55, 4.15, 6.04, 10.23)
+# Trạng thái (1 = uncensored, 0 = censored)
+delta <- c(0, 1, 1, 1, 0, 0, 0,
+           1, 1, 1, 0, 0, 1, 0)
+data <- data.frame(data_lifetime, delta)
+data
+```
+
+#### a) Xác định hàm $Q(θ|θ^{(t)})$ bằng phương pháp phù hợp. Trình bày rõ các biến đổi và phương pháp tính toán.
+Bắt đầu từ hàm Weibull:
+$$
+f(x) = abx^{b-1}
+exp(-ax^b)$$,
+với $x > 0$, và hai tham số a và b.
+
+
+Tính toán hàm Q(θ|θ^{(t)}):
+$\theta = (a, b)$
+
+$$
+Q(\theta|\theta^{(t)}) = E[\log(f(x))|\theta^{(t)}]
+$$
+
+$$
+E[\log(f(x))|\theta^{(t)}] = \int_{-\infty}^{\infty} \log(f(x)) dx
+$$
+
+$$
+E[\log(f(x))|\theta^{(t)}] = \int_{-\infty}^{\infty} \log(abx^{b-1}
+exp(-ax^b)) dx
+$$
+
+
+Vậy ta có:
+$$
+Q(\theta|\theta^{(t)}) = n\log(a) + n\log(b) + (b-1)\sum_{i=1}^n \log(x_i) - a\sum_{i=1}^n x_i^b
+$$
+
+- $n$ là số lượng quan sát
+
+- $a$ là tham số của phân phối Weibull
+
+- $b$ là tham số của phân phối Weibull
+
+- $x_i$ là thời gian quan sát
+
+
+
+```{r}
+# Hàm phân phối tích lũy của phân phối Weibull
+weib_f <- function(t, a, b) {
+  a * b * t^(b - 1) * exp(-a * t^b)
+}
+weib_surv <- function(t, a, b) {
+  exp(-a * t^b)
+}
+
+
+# Tích phân E_{old}[ln T_i] khi bị kiểm duyệt (T_i >= x0)
+E_lnT_censored <- function(x0, a_old, b_old) {
+  # E[ln T_i | T_i >= x0] = ∫_{x0}^∞ ln(t)*[f_old(t)/S_old(x0)] dt
+  S0 <- weib_surv(x0, a_old, b_old)
+  if (S0 < 1e-15) {
+    # nếu x0 quá lớn => S0 rất bé => tạm trả về ln(x0)
+    return(log(x0))
+  }
+
+  integrand <- function(t) {
+    log(t) * weib_f(t, a_old, b_old)
+  }
+
+  val <- integrate(integrand, lower = x0, upper = Inf,
+                   rel.tol = 1e-10)$value
+  val / S0
+}
+
+# E_{old}[T_i^b_new] khi censor
+E_Tb_censored <- function(x0, a_old, b_old, b_new) {
+  # ∫_{x0}^∞ t^b_new * [f_old(t)/S_old(x0)] dt
+  S0 <- weib_surv(x0, a_old, b_old)
+  if (S0 < 1e-15) return(x0^b_new)
+
+  integrand <- function(t) {
+    t^b_new * weib_f(t, a_old, b_old)
+  }
+
+  val <- integrate(integrand, lower = x0, upper = Inf,
+                   rel.tol = 1e-10)$value
+  val / S0
+}
+
+# E_{old}[T_i^b_new ln T_i] khi censor
+E_Tb_lnT_censored <- function(x0, a_old, b_old, b_new) {
+  # ∫_{x0}^∞ t^b_new ln(t)*[f_old(t)/S_old(x0)] dt
+  S0 <- weib_surv(x0, a_old, b_old)
+  if (S0 < 1e-15) return(x0^b_new * log(x0))
+
+  integrand <- function(t) {
+    t^b_new * log(t) * weib_f(t, a_old, b_old)
+  }
+
+  val <- integrate(integrand, lower = x0, upper = Inf,
+                   rel.tol = 1e-10)$value
+  val / S0
+}
+```
+#### b) Theo dạng của hàm Q(θ|θ (t) ) xác định được ở câu (a), hãy đề xuất quy trình thuật toán EM phù hợp.
+1. Khởi tạo $\theta^{(0)} = (a^{(0)}, b^{(0)})$.
+
+2. Tính $Q(\theta|\theta^{(t)})$.
+
+3. Cập nhật $\theta^{(t+1)} = argmax_{\theta} Q(\theta|\theta^{(t)})$.
+
+- Tính $E[T_i^{b_{new}}]$ và $E[T_i^{b_{new}} \ln T_i]$.
+- Giải phương trình $\frac{\partial Q}{\partial b_{new}} = 0$ để tìm $b_{new}$.
+- Tính $a_{new} = \frac{n}{\sum_{i=1}^n E[T_i^{b_{new}}]}$.
+- Cập nhật $\theta^{(t+1)} = (a_{new}, b_{new})$.
+
+$E[T_i^{b_{t + 1}}] = \frac{1}{S_0} \int_{x_0}^{\infty} t^{b_{t + 1}} f(t) dt$
+
+$E[T_i^{b_{t + 1}} \ln T_i] = \frac{1}{S_0} \int_{x_0}^{\infty} t^{b_{t + 1}} \ln t f(t) dt$
+
+$S_0 = \int_{x_0}^{\infty} f(t) dt$
+
+$F(x_0) = \int_{-\infty}^{x_0} f(t) dt$
+
+$F(x_0) = 1 - \exp(-a x_0^b)$
+
+
+4. Lặp lại bước 2 và 3 cho đến khi hội tụ.
+
+```{r}
+# Thuật toán EM
+em_weibull <- function(x, delta,
+                       a_init = 0.5,   # khởi tạo tham số a
+                       b_init = 1.5,   # khởi tạo tham số b
+                       max_iter = 100,
+                       tol = 1e-6,
+                       verbose = TRUE) {
+  # x, delta: dữ liệu (x_i, delta_i)
+  # a_init, b_init: giá trị khởi tạo
+  # max_iter, tol: điều kiện dừng
+  # verbose: in thông tin từng vòng
+
+  n <- length(x)
+  a_old <- a_init
+  b_old <- b_init
+  E_lnT <- numeric(n)
+  for (i in seq_len(n)) {
+    if (delta[i] == 1) {
+      E_lnT[i] <- log(x[i])  # uncensored => T_i = x_i
+    } else {
+      E_lnT[i] <- E_lnT_censored(x[i], a_old, b_old)
+    }
+  }
+
+  param_history <- matrix(NA, nrow = max_iter, ncol = 2,
+                          dimnames = list(NULL, c("a", "b")))
+
+  for (iter in 1:max_iter) {
+
+    # Ta viết hàm g(b_new) = ∂Q/∂b, rồi dùng uniroot
+    gfun <- function(b_new) {
+      # Tính E[T_i^b_new] và E[T_i^b_new ln T_i]
+      E_Tb <- numeric(n)
+      E_Tb_ln <- numeric(n)
+      for (i in seq_len(n)) {
+        if (delta[i] == 1) {
+          # uncensored
+          E_Tb[i] <- x[i]^b_new
+          E_Tb_ln[i] <- x[i]^b_new * log(x[i])
+        } else {
+          # censored
+          E_Tb[i] <- E_Tb_censored(x[i], a_old, b_old, b_new)
+          E_Tb_ln[i] <- E_Tb_lnT_censored(x[i], a_old, b_old, b_new)
+        }
+      }
+      sum_Tb <- sum(E_Tb)
+      sum_Tb_ln <- sum(E_Tb_ln)
+
+      # a_new = n / sum_Tb (từ ∂Q/∂a = 0)
+      a_new <- n / sum_Tb
+
+      # g(b) = n/b + sum(E_lnT) - a_new * sum(E_Tb_ln) = 0
+      val <- n / b_new + sum(E_lnT) - a_new * sum_Tb_ln
+      return(val)
+    }
+
+    # Giải gfun(b_new) = 0
+    root_res <- tryCatch(
+      uniroot(gfun, interval = c(1e-3, 50), tol = 1e-9),
+      error = function(e) NULL
+    )
+    if (is.null(root_res)) {
+      warning("Không tìm được nghiệm cho b_new ở vòng ", iter)
+      break
+    }
+    b_new <- root_res$root
+
+    # Tính a_new = n / sum_{i=1}^n E[T_i^b_new]
+    # (lại tính E[T_i^b_new] một lần nữa hoặc tái dùng)
+    E_Tb_new <- numeric(n)
+    for (i in seq_len(n)) {
+      if (delta[i] == 1) {
+        E_Tb_new[i] <- x[i]^b_new
+      } else {
+        E_Tb_new[i] <- E_Tb_censored(x[i], a_old, b_old, b_new)
+      }
+    }
+    sum_Tb_new <- sum(E_Tb_new)
+    a_new <- n / sum_Tb_new
+
+    old_params <- c(a_old, b_old)
+    new_params <- c(a_new, b_new)
+    diff_param <- sqrt(sum((new_params - old_params)^2))  # L2-norm
+
+    param_history[iter,] <- new_params
+
+    if (verbose) {
+      cat(sprintf("Iter %2d: a=%.5f, b=%.5f, diff=%.6e\n",
+                  iter, a_new, b_new, diff_param))
+    }
+
+    # Cập nhật
+    a_old <- a_new
+    b_old <- b_new
+
+    # Cập nhật lại E_lnT[i] cho vòng lặp kế (dựa trên a_old, b_old mới)
+    for (i in seq_len(n)) {
+      if (delta[i] == 1) {
+        E_lnT[i] <- log(x[i])
+      } else {
+        E_lnT[i] <- E_lnT_censored(x[i], a_old, b_old)
+      }
+    }
+
+    if (diff_param < tol) {
+      if (verbose) cat("Hội tụ tại vòng lặp", iter, "\n")
+      break
+    }
+  }
+
+  last_iter <- iter
+  param_history <- param_history[1:last_iter, , drop = FALSE]
+
+  # Trả về kết quả
+  list(a_hat = a_old,
+       b_hat = b_old,
+       iterations = last_iter,
+       param_history = param_history)
+}
+
+# Test với điểm khởi đầu
+theta_0 <- c(0.005, 3)
+result <- em_weibull(data$data_lifetime, data$delta, a_init = theta_0[1], b_init = theta_0[2])
+print(result$a_hat)
+print(result$b_hat)
+# Vẽ đồ thị hội tụ
+plot(1:result$iterations, result$param_history[, 1], type = "l", col = "blue",
+     xlab = "Iterations", ylab = "a_hat", main = "EM for Weibull (right-censored)")
+plot(1:result$iterations, result$param_history[, 2], type = "l", col = "red")
+```
+
+#### c) So sánh kết quả với điểm bắt đầu $(a^{(0)} , b^{(0)} ) = (0.003, 2.5)$.
+```{r}
+theta_0 <- c(0.003, 2.5)
+result <- em_weibull(data$data_lifetime, data$delta, a_init = theta_0[1], b_init = theta_0[2])
+print(result$a_hat)
+print(result$b_hat)
+# Vẽ đồ thị hội tụ
+plot(1:result$iterations, result$param_history[, 1], type = "l", col = "blue",
+     xlab = "Iterations", ylab = "a_hat", main = "EM for Weibull (right-censored)")
+plot(1:result$iterations, result$param_history[, 2], type = "l", col = "red")
+```

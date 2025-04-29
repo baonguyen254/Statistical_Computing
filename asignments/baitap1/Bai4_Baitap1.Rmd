@@ -1,0 +1,465 @@
+---
+title: "Bai4_Baitap1"
+author: "Pham Ngoc Anh"
+date: "2025-02-05"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+getwd()
+```
+
+## Bài tập 4
+
+### a. Xây dựng hàm mục tiêu để ước lượng cho các tham số r và K của mô hình, sao cho sai số của mô hình là nhỏ nhất
+Ta có:
+
+``` {r echo= FALSE, out.width = "70%"}
+knitr :: include_graphics("hinh1.png", error = FALSE)
+```
+
+với $N_t$ là kích thước quần thể tại thời điểm t.
+Ta xây dựng hàm mục tiêu để cho Tổng bình phương sai số (SSE) là nhỏ nhất:
+
+``` {r echo= FALSE, out.width = "70%"}
+knitr :: include_graphics("hinh2.png", error = FALSE)
+```
+
+với $N_t^{obs}$ là kích thước quần thể quan sát được (lấy từ tệp dữ liệu) và $g(t)$ là kích thước quần thể tính được theo phương trình đã cho.
+
+### b.    Viết các bước giải thuật để xác định ước lượng của r và K bằng phương pháp Newton
+Phương pháp Newton có phương trình nghiệm lặp như sau:
+
+``` {r echo= FALSE, out.width = "70%"}
+knitr :: include_graphics("hinh3.png", error = FALSE)
+```
+
+Các bước giải thuật: <br>
+1. Giả định giá trị ban đầu của các tham số $r$ và $K$ <br>
+2. Tính gradient $∇f$ bằng đạo hàm riêng của SSE theo $r$ và $K$ <br>
+3. Tính ma trận Hessian bằng đạo hàm bậc 2 của SSE <br>
+4. Cập nhật các tham số $r$ và $K$ sử dụng phương trình nghiệm lặp <br>
+$θ^{(k+1)}=θ^{(k)}- H^{(-1)} ∇ f(θ^{(k)})$
+5. Tiếp tục cho đến khi hết vòng lặp (40 vòng lặp)
+
+```{r}
+library(readr)
+library(MASS)
+```
+
+Note: Việc 2 cột trong tập dữ liệu nằm trong các khoảng giá trị khác nhau sẽ gây ra lỗi trong tính toán, do đó cần áp dụng các phương pháp chuẩn hoá dữ liệu để đưa các biến về cùng khoảng giá trị. Trong bài này, phương pháp Standardization.
+
+```{r}
+data_b <- read_delim(file = "~/Documents/Kao học/TKTT/bai tap 1_thong ke tinh toan/beetles.csv")
+head(data_b)
+
+N_t <- data_b$beetles
+t <- data_b$days
+C_N_t <- abs(min(N_t - mean(N_t))) + 1e-5
+C_t <- abs(min(t - mean(t))) + 1e-5
+
+
+t <- t_scaled <- (t - mean(t) + C_t) / sd(t)
+N_t <- N_t_scaled <- (N_t - mean(N_t) + C_N_t) / sd(N_t)
+
+
+N0 <- N_t[1]
+```
+
+``` {r}
+compute_SSE <- function(para, t, N0) {
+
+    K <- para[2]
+    r <- para[1]
+
+    g_t <- (K * N0)/ (N0 + (K - N0) * exp(-r * t))
+    SSE <- sum((N_t - g_t)^2)  # Compute SSE
+    return(SSE)
+}
+```
+
+``` {r}
+first_prime <- function(para, t, N0) {
+    #para = (r, K)
+
+    K <- para[2]
+    r <- para[1]
+
+    g_t <- (K*N0) / (N0 + (K - N0) * exp(-r*t))
+    g_prime_r <- g_t * exp(-r*t) * t * (K-N0) / (N0 + (K-N0) * exp(-r*t))
+    g_prime_k <- (N0 - g_t * exp(-r*t)) / (N0 + (K-N0) * exp(-r*t))
+
+    res <- numeric(2)
+    res[1] <- -2 * sum((N_t - g_t) * (g_t * exp(-r*t) * t * (K-N0)) / (N0 + (K-N0) * exp(-r*t)))
+    res[2] <- -2 * sum((N_t - g_t) * (N0 - g_t * exp(-r*t)) / (N0 + (K-N0) * exp(-r*t)))
+    return(res)
+}
+```
+
+``` {r}
+second_prime <- function(para, t, N0) {
+
+    K <- para[2]
+    r <- para[1]
+
+    g_t <- K * N0 / (N0 + (K - N0) * exp(-r*t))
+    g_prime_r <- g_t * exp(-r*t) * t * (K-N0) / (N0 + (K-N0) * exp(-r*t))
+    g_prime_k <- (N0 - g_t * exp(-r*t)) / (N0 + (K-N0) * exp(-r*t))
+
+    A <- exp(-r*t) * (K - N0) + t
+    B <- g_t * exp(-r*t) * t * (K-N0)
+    C <- 2 * g_prime_k * exp(-r*t) / (N0 + (K-N0) * exp(-r*t))
+    D <- exp(-r*t) / (N0 + (K-N0) * exp(-r*t))
+    E <- g_t*t - g_prime_r + g_prime_k*(K-N0)
+
+    res <- matrix(0, nrow = 2, ncol = 2)
+    res[1,1] <- -2 * sum(g_prime_r  * (A - B) / (N0 + (K - N0) * exp(-r*t))) 
+    res[2,2] <- -2 * sum(g_prime_k^2 + (N_t - g_t) * C)
+    res[1,2] <- res[2,1] <- 2 * sum(g_prime_k * g_prime_r - (N_t - g_t) * D * E)
+    
+    res <- res +  diag(1e-5, 2)
+
+    return(res)
+}
+```
+
+``` {r}
+par_0 <- c(100,200) 
+iter <- 40  
+par_est <- matrix(0, nrow = iter + 1, ncol = 2) 
+par_est[1, ] <- par_0
+```
+
+``` {r}
+SSE_values <- numeric(iter + 1)  
+SSE_values[1] <- compute_SSE(para = par_0, t=t, N0=N0)  
+
+for (i in 1:iter) {
+    score <- first_prime(para = par_0, t = t, N0 = N0)
+    hess <- second_prime(para = par_0, t = t, N0 = N0)
+
+    par_0 <- par_0 - solve(hess) %*% score
+    par_est[i+1, ] <- par_0
+    SSE_values[i+1] <- compute_SSE(para = par_0, t=t, N0=N0)  # Compute SSE for each iteration
+
+    return(par_est)
+    return(SSE_values)
+}
+
+## Print final SSE values
+par_est
+SSE_values
+```
+
+=> Mô hình cho thấy không có nghiệm lặp khi sử dụng phương pháp Newton. Ngoài ra, SSE của model tăng chứ không được tối thiểu hoá.
+
+### c. Viết các bước giải thuật để xác định ước lượng của r và K bằng phương pháp quasi- Newton. Viết một chương trình thi hành giải thuật này. So sánh với kết quả câu (b).
+
+Các bước giải thuật: <br>
+1. Khởi tạo $α^{(t)}$ = 1 và chọn $M^{(t)}$ <br>
+2. Xác định $x^{(t+1)}$ <br>
+
+``` {r echo= FALSE, out.width = "70%"}
+knitr :: include_graphics("hinh4.png", error = FALSE)
+```
+<br>
+3. Nếu $f(x^{(t+1)})$ < $f(x^{(t)})$ thì tính lại $x^{(t+1)}$ và $α^{(t)}$:= $α^{(t)}/2$ <br>
+Lặp lại tới khi nào $f(x^{(t+1)})$ > $f(x^{(t)})$ <br>
+4. Cập nhật $M^{(t)}$
+
+``` {r echo= FALSE, out.width = "70%"}
+knitr :: include_graphics("hinh5.png", error = FALSE)
+```
+trong đó,
+``` {r echo= FALSE, out.width = "30%"}
+knitr :: include_graphics("hinh6.png", error = FALSE)
+```
+<br>
+Nếu $|(v^{(t)})⊤*v^{(t)}|<ϵ$ thì $M^{(t+1)}$ = $M^{(t)}$.Nếu không thì đi tiếp với $M^{(t+1)}$ đã tính.
+
+``` {r}
+alpha_default <- 1
+alpha <- alpha_default
+M <- diag(c(-1, -1), 2, 2)
+iter <- 20
+par_bfgs_0 <- c(100, 200)
+par_bfgs <- matrix(0, nrow = iter + 1, ncol = 2)
+par_bfgs[1, ] <- par_bfgs_0 
+epsilon <- 1e-10
+```
+
+
+``` {r}
+
+SSE_values <- numeric(iter + 1)  
+SSE_values[1] <- compute_SSE(para = par_bfgs_0, t=t, N0=N0)  
+
+
+for (i in 1:iter) {
+
+    hessian_inv <- solve(M)
+    score <- first_prime(para = par_bfgs_0, t = t, N0 = N0)
+    alpha*hessian_inv %*% score
+
+    par_t <- par_bfgs_0 - alpha * hessian_inv %*% score
+
+    #REDUCE ALPHA UNTIL A CORRECT STEP IS REACHED
+    f_t <- compute_SSE(para = par_t, t = t, N0 = N0)
+    f_t0 <- compute_SSE(para = par_bfgs_0, t = t, N0 = N0)
+
+    while (f_t > f_t0) {
+        # chừng nào f_t < f_t0 thì cập nhật lại alpha và tính lại par_t
+        alpha <- alpha*2
+        par_t <- par_bfgs_0 - alpha * hessian_inv %*% score
+        f_t <- compute_SSE(para = par_t, t = t, N0 = N0)
+    }
+
+    par_bfgs[i+1, ] <- par_t
+    SSE_values[i+1] <- compute_SSE(para = par_0, t=t, N0=N0)  # Compute SSE for each iteration
+
+    ## UPDATE M(t)
+    ht = par_t - par_bfgs_0
+    score_t <- first_prime(para = par_t, t = t, N0 = N0)
+    ut <- score_t - score 
+    v <- ut - M %*% ht
+    M_old <- M
+    M <- M - ((M %*% ht %*% t(M %*% ht))/(as.numeric(t(ht) %*% M %*% ht))) +
+                ((ut %*% t(ut))/(as.numeric(t(ht) %*% ut))) 
+    # CHECK CONDITION TO UPDATE M
+    if (abs((t(v) %*% ht)[1]) < epsilon) {
+                M <- M_old
+            } 
+    # RESET alpha and x0 
+    alpha <- alpha_default
+    par_bfgs_0 <- par_t
+}
+```
+
+```{r}
+print(par_bfgs)
+print(SSE_values)
+```
+
+=> Nghiệm cũng không lặp ở phương pháp này. Tương tự với phương pháp Newton, SSE không được tối thiểu hoá.
+
+### d. Tìm MLE cho r, K và σ2 theo giả định này, sử dụng cả 3 phương pháp Newton, Fisher Scoring và quasi-Newton. Cung cấp các sai số chuẩn của ước lượng MLE và ước tính hệ số tương quan giữa chúng. Nhận xét về kết quả.
+
+#### Phương pháp Newton:
+```{r}
+epsilon <- 1e-8  # Small positive value to avoid log(0)
+lambda <- max(1e-3, 1e-1 * max(abs(hess)))
+```
+
+``` {r}
+logL_prime <- function(para, t, N0) {
+    # para = (r, K, var2)
+    K <- para[2]
+    r <- para[1]
+    var2 <- para[3]
+    n <- length(N_t)
+
+
+    g_t <- K * N0 / (N0 + (K - N0) * exp(-r*t))
+    g_t[g_t < epsilon] <- epsilon  # Ensure g_t is never zero or negative
+    g_prime_r <- g_t * exp(-r*t) * t * (K-N0) / (N0 + (K-N0) * exp(-r*t))
+    g_prime_k <- (N0 - g_t * exp(-r*t)) / (N0 + (K-N0) * exp(-r*t))
+
+    res <- numeric(3)
+    dl_dr <- res[1] <- -1/var2 * sum((log(N_t) - log(g_t)) * g_prime_r/g_t)
+    dl_dk <- res[2] <- -1/var2 * sum((log(N_t) - log(g_t)) * g_prime_k/g_t)
+    dl_dvar2 <- res[3] <- -n/(2*var2) + 1/(2*var2^2) * sum((log(N_t) - log(g_t))^2)
+
+    return(res)
+}
+```
+
+```{r}
+logL_2prime <- function(para, t, N0) {
+  # para = (r, K, var2)
+  K <- para[2]
+  r <- para[1]
+  var2 <- para[3]
+  n <- length(N_t)
+
+
+  g_t <- K * N0 / (N0 + (K - N0) * exp(-r * t))
+  g_t[g_t < epsilon] <- epsilon  # Ensure g_t is never zero or negative
+  g_prime_r <- g_t * exp(-r * t) * t * (K - N0) / (N0 + (K - N0) * exp(-r * t))
+  g_prime_k <- (N0 - g_t * exp(-r * t)) / (N0 + (K - N0) * exp(-r * t))
+
+  res <- matrix(0, nrow = 3, ncol = 3)
+  d2l_dr2 <- res[1, 1] <- -sum((g_prime_r / g_t)^2) / var2
+  d2l_drdk <- res[1, 2] <- res[2, 1] <- -sum(g_prime_r * g_prime_k / g_t) / var2
+  d2l_drdvar2 <- res[1, 3] <- res[3, 1] <- sum((log(N_t) - log(g_t)) * g_prime_r / g_t) / (var2^2)
+  d2l_dkdvar2 <- res[2, 3] <- res[3, 2] <- sum((log(N_t) - log(g_t)) * g_prime_k / g_t) / (var2^2)
+  d2l_dk2 <- res[2, 2] <- -sum((g_prime_k / g_t)^2) / var2
+  d2l_dvar2_2 <- res[3, 3] <- n / (2 * (var2)^2) - sum((log(N_t) - log(g_t))^2) / ((var2)^4)
+
+  return(res)
+}
+```
+
+```{r}
+par_0 <- c(200, 300, 400)
+iter <- 100
+par_est <- matrix(0, nrow = iter + 1, ncol = 3)
+relative_err_est <- matrix(0, nrow = iter + 1, ncol = 3)
+abs_err_est <- matrix(0, nrow = iter + 1, ncol = 3)
+
+par_est[1,] <- par_0
+relative_err_est[1,] <- c(0, 0, 0)
+abs_err_est[1,] <- c(0, 0, 0)
+
+for (i in 1:iter) {
+  score <- logL_prime(para = par_0, t = t, N0 = N0)
+  hess <- logL_2prime(para = par_0, t = t, N0 = N0)
+  hess_reg <- hess + lambda * diag(nrow(hess))
+
+  par_new <- par_0 - solve(hess_reg) %*% score
+
+  abs_err <- abs(par_new - par_0)
+  relative_err <- (abs(par_new - par_0) / abs(par_0))
+  relative_err_est[i + 1,] <- relative_err
+  abs_err_est[i + 1,] <- abs_err
+
+  par_0 <- par_new
+
+  par_est[i + 1,] <- par_0
+
+}
+```
+
+```{r}
+par_est
+relative_err_est
+abs_err_est
+```
+=> Không hội tụ
+
+#### Phương pháp Fisher scoring
+
+``` {r}
+par_0 <- c(200,300,400)
+iter <- 40
+par_est <- matrix(0, nrow = iter + 1, ncol = 3)
+par_est[1, ] <- par_0
+
+relative_err_est <- matrix(0, nrow = iter + 1, ncol = 3)
+abs_err_est <- matrix(0, nrow = iter + 1, ncol = 3)
+relative_err_est[1, ] <- c(0,0,0)
+abs_err_est[1, ] <- c(0,0,0)
+```
+
+
+```{r}
+n <- length(N_t)
+
+for (i in 1:iter) {
+  score <- logL_prime(para = par_0, t = t, N0 = N0)
+  hess <- logL_2prime(para = par_0, t = t, N0 = N0)
+  fisher <- -hess / n
+  par_new <- par_0 - solve(hess) %*% score
+
+  abs_err <- abs(par_new - par_0)
+  relative_err <- (abs(par_new - par_0) / abs(par_0))
+  relative_err_est[i + 1,] <- relative_err
+  abs_err_est[i + 1,] <- abs_err
+
+  par_0 <- par_new
+
+  par_est[i + 1,] <- par_0
+}
+```
+
+```{r}
+par_est
+relative_err_est
+abs_err_est
+```
+
+=> Chỉ có tham số r hội tụ sau 31 lần lặp, 2 tham số còn lại không hội tụ
+
+#### Phương pháp quasi Newton
+```{r}
+alpha_default <- 1
+alpha <- alpha_default
+M <- diag(c(-1, -1, -1), 3, 3)
+iter <- 20
+par_bfgs_0 <- c(200, 300, 400)
+par_bfgs <- matrix(0, nrow = iter + 1, ncol = 3)
+par_bfgs[1,] <- par_bfgs_0
+epsilon <- 1e-10
+```
+
+```{r}
+relative_err_est <- matrix(0, nrow = iter + 1, ncol = 3)
+abs_err_est <- matrix(0, nrow = iter + 1, ncol = 3)
+relative_err_est[1,] <- c(0, 0, 0)
+abs_err_est[1,] <- c(0, 0, 0)
+```
+
+```{r}
+likelihood_function <- function(para, t, N0) {
+  K <- para[2]
+  r <- para[1]
+  var2 <- para[3]
+  n <- length(N_t)
+
+
+  g_t <- K * N0 / (N0 + (K - N0) * exp(-r * t))
+  g_t[g_t < epsilon] <- epsilon  # Ensure g_t is never zero or negative
+
+  return(-n * log(2 * pi * var2) / 2 - sum((log(N_t) - log(g_t))^2) / (2 * var2))
+
+}
+```
+
+```{r}
+for (i in 1:iter) {
+  hessian_inv <- solve(M)
+  score <- logL_prime(para = par_bfgs_0, t = t, N0 = N0)
+  par_t <- par_bfgs_0 - alpha * hessian_inv %*% score
+  # REDUCE ALPHA UNTIL A CORRECT STEP IS REACHED
+  f_t <- likelihood_function(para = par_t, t = t, N0 = N0)
+  f_t0 <- likelihood_function(para = par_bfgs_0, t = t, N0 = N0)
+
+  while (f_t < f_t0) {
+    alpha <- alpha / 2
+    par_t <- par_bfgs_0 - alpha * hessian_inv %*% score
+    f_t <- likelihood_function(para = par_t, t = t, N0 = N0)
+  }
+
+  abs_err <- abs(par_t - par_0)
+  relative_err <- (abs(par_t - par_0) / abs(par_0))
+  relative_err_est[i + 1,] <- relative_err
+  abs_err_est[i + 1,] <- abs_err
+
+  par_bfgs[i + 1,] <- par_t
+  ## UPDATE M(t) - BFGS METHOD
+  ht <- par_t - par_bfgs_0
+  score_t <- logL_prime(para = par_t, t = t, N0 = N0)
+  ut <- score_t - score
+  v <- ut - M %*% ht
+  M_old <- M
+  M <- M - ((M %*% ht %*% t(M %*% ht)) / (as.numeric(t(ht) %*% M %*% ht))) +
+    ((ut %*% t(ut)) / (as.numeric(t(ht) %*% ut)))
+  ##CHECK CONDITION TO UPDATE M
+  if (abs((t(v) %*% ht)[1]) < epsilon) {
+    M <- M_old
+  }
+  ##RESET alpha and x0
+  alpha <- alpha_default
+  par_bfgs_0 <- par_t
+}
+```
+
+```{r}
+print(par_bfgs)
+relative_err_est
+abs_err_est
+```
+

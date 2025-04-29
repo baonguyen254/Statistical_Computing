@@ -22,7 +22,9 @@ contour(x1, x2, ff, levels = c(seq(-600, -50, by = 50), -30, -20, -10, -5, 0),
 # áp dụng pp newton để tìm cực trị
 f_prime <- function(x) {
   f_prime_x1 <- (-1) * (4 * x[1]^3 + 4 * x[1] * x[2] - 42 * x[1] + 2 * x[2]^2 - 14)
-  f_prime_x2 <- (-1) * (2 * x[1]^2 - 26 * x[2] - 22 + 4 * x[1] * x[2] + 4 * x[2]^3)
+  f_prime_x2 <- (-1) * (2 * x[1]^2 - 26 * x[2] - 22 +
+    4 * x[1] * x[2] +
+    4 * x[2]^3)
   out <- c(f_prime_x1, f_prime_x2)
   return(out)
 }

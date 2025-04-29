@@ -1,0 +1,222 @@
+---
+title: "BaiTap3_Cau2_2_1"
+author: "Mu Ham Mach A Mine"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+**Bài tập 2.2.1: Áp dụng phương pháp tích phân Monte Carlo tính các tích phân sau:**
+
+**Câu 1**
+
+```{r echo= FALSE, out.width = "20%",fig.align="center"}
+knitr::include_graphics("Hinh1.png", error = FALSE)
+```
+
+**Bước 1: Xác định miền tích phân**
+
+Biến x chạy từ 0 đến 1. Giá trị của tích phân có thể được xấp xỉ bằng phương pháp Monte Carlo như sau
+
+```{r echo= FALSE, out.width = "35%",fig.align="center"}
+knitr::include_graphics("Hinh2.png", error = FALSE)
+```
+
+Với:
+
+N là số lượng điểm lấy mẫu ngẫu nhiên.
+
+xi là các giá trị ngẫu nhiên trong khoảng [0,1]
+
+a=0, b=1, nên b−a=1
+
+**Bước 2: Tính toán**
+
+```{r}
+
+# Số lượng điểm lấy mẫu
+N <- 1000000  # 10^6 điểm
+
+# Sinh N điểm ngẫu nhiên x trong khoảng [0,1]
+x_samples <- runif(N, min = 0, max = 1)
+
+# Tính f(x) = x^2 tại từng điểm
+f_values <- x_samples^2
+
+# Xấp xỉ tích phân bằng giá trị trung bình nhân với độ dài đoạn [0,1]
+integral_estimate <- mean(f_values) * (1 - 0)
+
+# In kết quả
+cat("Giá trị xấp xỉ của tích phân:", integral_estimate, "\n")
+
+
+```
+
+**Câu 2**
+
+```{r echo= FALSE, out.width = "40%",fig.align="center"}
+knitr::include_graphics("Hinh3.png", error = FALSE)
+```
+
+**Bước 1: Xác định miền tích phân**
+
+Biến x chạy từ 0 đến π. Giá trị của tích phân có thể được xấp xỉ bằng phương pháp Monte Carlo như sau
+
+```{r echo= FALSE, out.width = "35%",fig.align="center"}
+knitr::include_graphics("Hinh5.png", error = FALSE)
+```
+
+```{r echo= FALSE, out.width = "35%",fig.align="center"}
+knitr::include_graphics("Hinh4.png", error = FALSE)
+```
+
+Với:
+
+N là số lượng điểm lấy mẫu ngẫu nhiên.
+
+xi là các giá trị ngẫu nhiên trong khoảng [0,π]
+
+
+**Bước 2: Tính toán**
+
+```{r}
+
+# Số lượng điểm lấy mẫu
+N <- 1000000  # 10^6 điểm
+
+# Sinh N điểm ngẫu nhiên x trong khoảng [0, pi]
+x_samples <- runif(N, min = 0, max = pi)
+
+# Tính f(x) = sqrt(x^3 + sqrt(x)) - x^2 * sin(4*x) tại từng điểm
+f_values <- sqrt(x_samples^3 + sqrt(x_samples)) - x_samples^2 * sin(4 * x_samples)
+
+# Xấp xỉ tích phân bằng giá trị trung bình nhân với độ dài đoạn [0, pi]
+integral_estimate <- mean(f_values) * pi
+
+# In kết quả
+cat("Giá trị xấp xỉ của tích phân:", integral_estimate, "\n")
+
+
+```
+
+
+**Câu 3**
+
+```{r echo= FALSE, out.width = "35%",fig.align="center"}
+knitr::include_graphics("Hinh6.png", error = FALSE)
+```
+
+**Bước 1: Xác định miền tích phân**
+
+Biến x chạy từ 0 đến 1. Biến y chạy từ -2 đến 2.  Giá trị của tích phân có thể được xấp xỉ bằng phương pháp Monte Carlo như sau
+
+```{r echo= FALSE, out.width = "30%",fig.align="center"}
+knitr::include_graphics("Hinh7.png", error = FALSE)
+```
+
+
+```{r echo= FALSE, out.width = "35%",fig.align="center"}
+knitr::include_graphics("Hinh8.png", error = FALSE)
+```
+
+Trong đó, diện tích miền là (1−0)×(2−(−2))=4
+
+
+**Bước 2: Tính toán**
+
+```{r}
+
+# Số lượng điểm lấy mẫu
+N <- 1000000  # 10^6 điểm
+
+# Sinh ngẫu nhiên N điểm (x, y) trong miền [0,1] x [-2,2]
+x_samples <- runif(N, min = 0, max = 1)
+y_samples <- runif(N, min = -2, max = 2)
+
+# Tính giá trị của hàm tại các điểm lấy mẫu
+f_values <- x_samples^2 * cos(x_samples * y_samples)
+
+# Xấp xỉ tích phân bằng giá trị trung bình nhân với diện tích miền
+area <- (1 - 0) * (2 - (-2))  # Diện tích của miền tích phân
+integral_estimate <- mean(f_values) * area
+
+# In kết quả
+cat("Giá trị xấp xỉ của tích phân:", integral_estimate, "\n")
+
+
+```
+
+
+**Câu 4**
+
+```{r echo= FALSE, out.width = "30%",fig.align="center"}
+knitr::include_graphics("Hinh9.png", error = FALSE)
+```
+
+**Bước 1: Xác định miền tích phân**
+
+Hàm số cần tích phân:
+
+```{r echo= FALSE, out.width = "25%",fig.align="center"}
+knitr::include_graphics("Hinh10.png", error = FALSE)
+```
+
+Chúng ta cần xác định hàm g(x) và hàm mật độ f(x) sao cho tích phân có thể được viết dưới dạng:
+
+```{r echo= FALSE, out.width = "25%",fig.align="center"}
+knitr::include_graphics("Hinh11.png", error = FALSE)
+```
+
+Khi đó, ta chọn:
+
+```{r echo= FALSE, out.width = "30%",fig.align="center"}
+knitr::include_graphics("Hinh12.png", error = FALSE)
+```
+
+Chúng ta sẽ phát sinh mẫu ngẫu nhiên từ phân phối có hàm mật độ f(x) và tính ước lượng Monte Carlo của tích phân.
+
+
+**Bước 2: Tính toán**
+
+```{r}
+
+# Số lượng mẫu
+n <- 1000000
+
+# Hàm mật độ f(x)
+f <- function(x) {
+  (3 / 4) * x^3 * exp(-x^3 / 4)
+}
+
+# Hàm g(x)
+g <- function(x) {
+  x
+}
+
+# Hàm để phát sinh mẫu từ phân phối có hàm mật độ f(x)
+# Sử dụng phương pháp biến đổi ngẫu nhiên hoặc phương pháp lấy mẫu quan trọng
+# Ở đây, chúng ta sử dụng phương pháp lấy mẫu quan trọng với phân phối mũ
+
+# Hàm để phát sinh mẫu từ phân phối mũ
+generate_samples <- function(n) {
+  # Chọn một phân phối mũ với tham số lambda
+  lambda <- 1
+  rexp(n, rate = lambda)
+}
+
+# Phát sinh mẫu
+samples <- generate_samples(n)
+
+# Tính trọng số quan trọng
+weights <- f(samples) / dexp(samples, rate = 1)
+
+# Tính ước lượng Monte Carlo
+I_hat <- mean(g(samples) * weights)
+
+# In kết quả
+cat("Ước lượng tích phân I là:", I_hat, "\n")
+
+```

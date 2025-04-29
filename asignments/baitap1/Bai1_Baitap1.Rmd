@@ -1,0 +1,167 @@
+---
+title: "Bai1_Baitap1"
+author: "Mu Ham Mach A Mine"
+output: html_document
+date: "2025-02-09"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+```{r cars}
+# Load thư viện
+library(ggplot2)
+
+#(a) Xác định MLE cho θ. (Chỉ cần giải một phương trình đa thức đơn giản.) Đánh giá ước lượng bằng cách sử dụng dữ liệu mà Dempster, Laird và Rubin đã sử dụng: n = 197 và x = (125, 18, 20, 34).
+# Định nghĩa dữ liệu
+n <- 197
+x1 <- 125
+x2 <- 18
+x3 <- 20
+x4 <- 34
+
+# Hàm log-likelihood
+log_likelihood <- function(theta) {
+  x1 * log(2 + theta) +
+    (x2 + x3) * log(1 - theta) +
+    x4 * log(theta)
+}
+
+# Tính giá trị log-likelihood theo theta
+theta_vals <- seq(0.01, 0.99, length.out = 100)
+log_likelihood_vals <- sapply(theta_vals, log_likelihood)
+
+# Vẽ đồ thị log-likelihood
+plot(theta_vals, log_likelihood_vals, type = "l", col = "blue",
+     xlab = expression(theta), ylab = "Log-Likelihood",
+     main = "Log-Likelihood function", lwd = 2)
+grid()
+
+# Xác định MLE bằng uniroot
+theta_mle <- uniroot(function(theta) (x1 / (2 + theta)) - ((x2 + x3) / (1 - theta)) + (x4 / theta),
+                     lower = 0, upper = 1)$root
+points(theta_mle, log_likelihood(theta_mle), col = "red", pch = 19)
+text(theta_mle, log_likelihood(theta_mle), labels = paste("MLE:", round(theta_mle, 4)), pos = 4)
+
+# b) Viết các bước giải thuật để xác định ước lượng theo phương pháp của Newton. Viết một chương trình thi hành giải thuật này, bắt đầu với θ(0) = 0.5. Phương pháp Newton
+newton_method <- function(theta0, tol = 1e-6, max_iter = 100) {
+  theta <- theta0
+  iter_vals <- c(theta)
+  for (i in 1:max_iter) {
+    d1 <- (x1 / (2 + theta)) - ((x2 + x3) / (1 - theta)) + (x4 / theta)
+    d2 <- -(x1 / (2 + theta)^2) -
+      ((x2 + x3) / (1 - theta)^2) -
+      (x4 / theta^2)
+    theta_new <- theta - d1 / d2
+    iter_vals <- c(iter_vals, theta_new)
+    if (abs(theta_new - theta) < tol) break
+    theta <- theta_new
+  }
+  return(iter_vals)
+}
+theta_newton_vals <- newton_method(0.5)
+
+# Vẽ tiến trình hội tụ Newton
+plot(theta_newton_vals, type = "b", col = "red", pch = 19, xlab = "Iteration", ylab = expression(theta),
+     main = "Tiến trình hội tụ - Newton")
+grid()
+
+# (c) Viết các bước giải thuật để xác định ước lượng theo phương pháp Fisher scoring. Viết một chương trình thi hành giải thuật này, bắt đầu với θ(0) = 0.5.
+fisher_method <- function(theta0, tol = 1e-6, max_iter = 100) {
+  theta <- theta0
+  iter_vals <- c(theta)
+  for (i in 1:max_iter) {
+    fisher_info <- -(x1 / (2 + theta)^2) -
+      ((x2 + x3) / (1 - theta)^2) -
+      (x4 / theta^2)
+    theta_new <- theta + ((x1 / (2 + theta)) - ((x2 + x3) / (1 - theta)) + (x4 / theta)) / fisher_info
+    iter_vals <- c(iter_vals, theta_new)
+    if (abs(theta_new - theta) < tol) break
+    theta <- theta_new
+  }
+  return(iter_vals)
+}
+theta_fisher_vals <- fisher_method(0.5)
+
+# Vẽ tiến trình hội tụ Fisher Scoring
+plot(theta_fisher_vals, type = "b", col = "blue", pch = 19, xlab = "Iteration", ylab = expression(theta),
+     main = "Tiến trình hội tụ - Fisher Scoring")
+grid()
+
+# (d) Viết các bước giải thuật để xác định ước lượng theo phương pháp quasi-Newton. Viết một chương trình thi hành giải thuật này, bắt đầu với θ(0) = 0.5.
+# Định nghĩa hàm Log-Likelihood
+log_likelihood <- function(theta) {
+  if (theta <= 0 || theta >= 1) return(Inf)  # Tránh log(0) hoặc log(âm)
+  return(-(x1 * log(2 + theta) +
+    (x2 + x3) * log(1 - theta) +
+    x4 * log(theta)))
+}
+
+# Định nghĩa đạo hàm của Log-Likelihood
+gradient <- function(theta) {
+  if (theta <= 0 || theta >= 1) return(0)  # Tránh chia cho 0
+  return(-(x1 / (2 + theta) - (x2 + x3) / (1 - theta) + x4 / theta))
+}
+
+# Lưu tiến trình hội tụ
+theta_values <- c()
+
+callback <- function(theta) {
+  theta_values <<- c(theta_values, theta)  # Ghi nhận giá trị theta trong mỗi bước lặp
+}
+
+# Áp dụng phương pháp Quasi-Newton (BFGS)
+quasi_newton <- optim(
+  par = 0.5,
+  fn = log_likelihood,
+  gr = gradient,
+  method = "BFGS",
+  control = list(trace = 1, REPORT = 1),
+  hessian = TRUE
+)
+
+# Tạo dãy giá trị theta để vẽ đồ thị
+theta_seq <- seq(0.01, 0.99, by = 0.01)
+log_likelihood_values <- sapply(theta_seq, log_likelihood)
+gradient_values <- sapply(theta_seq, gradient)
+
+# Vẽ tiến trình hội tụ quasi-Newton
+plot(
+  1:length(theta_values), theta_values,
+  type = "o", col = "purple", lwd = 2, pch = 16,
+  xlab = "Số bước lặp", ylab = expression(theta),
+  main = "Tiến trình hội tụ - Quasi-Newton"
+)
+grid()
+
+
+```
+
+(e)
+So sánh các phương pháp
+
+Độ chính xác của ước lượng:
+
+Tất cả các phương pháp đều cho kết quả gần giống nhau nếu hội tụ đúng cách.
+
+
+Tốc độ hội tụ:
+
+- Newton's Method: Thường hội tụ nhanh nếu điểm khởi đầu gần đúng và hàm số có đạo hàm cấp 2 liên tục.
+
+- Fisher Scoring: Tương tự như Newton's Method nhưng sử dụng thông tin Fisher, có thể hội tụ nhanh hơn trong một số trường hợp.
+
+- Quasi-Newton (BFGS): Thường hội tụ nhanh và ổn định, đặc biệt khi hàm số phức tạp.
+
+Độ phức tạp tính toán:
+
+- Newton's Method: Cần tính cả đạo hàm cấp 1 và cấp 2, có thể tốn kém nếu hàm số phức tạp.
+
+- Fisher Scoring: Cần tính thông tin Fisher, có thể tốn kém nhưng thường ít hơn Newton's Method.
+
+- Quasi-Newton (BFGS): Không cần tính đạo hàm cấp 2, sử dụng xấp xỉ, thường ít tốn kém hơn.
+
+Kết luận: Tùy thuộc vào bài toán cụ thể, mỗi phương pháp có ưu và nhược điểm riêng. Quasi-Newton (BFGS) thường được ưa chuộng do tính ổn định và tốc độ hội tụ tốt.
+

@@ -1,0 +1,170 @@
+---
+title: "bài 1 - Bài tập 2"
+author: "Nguyễn Quốc Bảo"
+team: "B"
+date: "2025-03-14"
+output: html_notebook
+---
+```{r include=FALSE}
+if (!require(viridis)) { install.packages("viridis") }
+if (!require(rmarkdown)) { install.packages("rmarkdown") }
+if (!require(languageserver)) { install.packages("languageserver") }
+library(viridis) # for color
+library(rmarkdown) # for html_notebook
+library(knitr) # for tables
+```
+
+**Bài tập 1**.
+
+\[f(y; \mu, \sigma, \nu) = \frac{\Gamma(\frac{\nu+1}{2})}{\sigma\sqrt{\nu\pi}\Gamma(\frac{\nu}{2})}\left(1 + \frac{(y-\mu)^2}{\sigma\nu}\right)^{-(\nu+1)/2}\]
+
+#### a. Áp dụng thuật toán EM xây dựng quy trình ước lượng cho các tham số $\mu, \sigma$ và $\nu$.
+
+```{r}
+# Hàm EM cho phân phối t-student location-scale
+EM_t_student <- function(y, mu_0 = 0, sigma_0 = 1, nu_0 = 5, tol = 1e-6, max_iter = 100) {
+  n <- length(y)
+  mu_t <- mu_0
+  sigma_t <- sigma_0
+  nu_t <- nu_0
+
+  for (iter in 1:max_iter) {
+    # Lưu tham số cũ
+    params_old <- c(mu_t, sigma_t, nu_t)
+
+    # E-step: Tính các trọng số và kỳ vọng có điều kiện
+    delta <- (y - mu_t)^2 / sigma_t  # Khoảng cách Mahalanobis
+    weights <- (nu_t + 1) / (nu_t + delta)  # E[Lambda|y]
+    log_weights <- digamma((nu_t + 1) / 2) - log((nu_t + delta) / 2)  # E[log Lambda|y]
+
+    # M-step
+    # Cập nhật vị trí (location)
+    mu_t <- weighted.mean(y, weights)
+
+    # Cập nhật tỷ lệ (scale)
+    resid_sq <- (y - mu_t)^2
+    sigma_t <- mean(weights * resid_sq)
+
+    # Cập nhật bậc tự do (degrees of freedom)
+    update_nu <- function(nu) {
+      # Hàm mục tiêu cho nu
+      target <- log(nu / 2) - digamma(nu / 2) +
+        mean(log_weights - weights) +
+        1
+      # Đạo hàm của hàm mục tiêu
+      gradient <- 1 / nu - trigamma(nu / 2) / 2
+      # Cập nhật Newton
+      nu - target / gradient
+    }
+
+    # Lặp Newton với kiểm soát biên
+    nu_new <- nu_t
+    for (k in 1:15) {
+      nu_prev <- nu_new
+      nu_new <- update_nu(nu_prev)
+      nu_new <- min(max(nu_new, 2.1), 50)  # Giới hạn hợp lý
+
+      if (abs(nu_new - nu_prev) < tol / 10) break
+    }
+    nu_t <- nu_new
+
+    # Kiểm tra hội tụ
+    params_new <- c(mu_t, sigma_t, nu_t)
+    if (max(abs(params_new - params_old)) < tol) {
+      print(paste("Hội tụ sau", iter, "vòng lặp"))
+      break
+    }
+  }
+
+  return(list(
+    mu = mu_t,
+    sigma = sigma_t,
+    nu = nu_t,
+    iterations = iter
+  ))
+}
+n <- 1000  # Số mẫu mô phỏng
+true_mu <- 0
+true_sigma <- 1
+true_nu <- 5
+y <- true_mu + true_sigma * rt(n, df = true_nu)
+result <- EM_t_student(y)
+print(result$mu)
+print(result$sigma)
+print(result$nu)
+```
+
+
+#### b. Áp dụng quy trình EM ở câu (a) cho dữ liệu mô phỏng từ mô hình location-scale, với $\mu = 0, \sigma = 1$ và $\nu = 5$. Thực hiện 1 quy trình mô phỏng Monte Carlo với 1000 lần lặp để đánh giá độ chính xác của ước lượng EM.
+
+```{r}
+# Tạo dữ liệu mô phỏng
+set.seed(123)
+n <- 1000  # Số mẫu mô phỏng
+true_mu <- 0
+true_sigma <- 1
+true_nu <- 5
+
+# Thực hiện Monte Carlo với 1000 lần lặp
+n_sim <- 1000
+results_b <- matrix(NA, nrow = n_sim, ncol = 3)
+
+for (i in 1:n_sim) {
+  # Tạo dữ liệu từ phân phối t-student
+  y_sim <- true_mu + true_sigma * rt(n, df = true_nu)
+
+  # Áp dụng thuật toán EM
+  fit <- EM_t_student(y_sim)
+  results_b[i,] <- c(fit$mu, fit$sigma, fit$nu)
+}
+
+# Hiển thị kết quả
+cat("Giá trị thực: μ =", true_mu, ", σ =", true_sigma, ", ν =", true_nu, "\n")
+cat("Ước lượng trung bình:\n")
+cat("μ =", mean(results_b[, 1]), "\n")
+cat("σ =", mean(results_b[, 2]), "\n")
+cat("ν =", mean(results_b[, 3]), "\n")
+
+# Vẽ histogram của các ước lượng
+par(mfrow = c(2, 2))
+hist(results_b[, 1], main = "Histogram của μ", xlab = "μ")
+abline(v = true_mu, col = "red", lwd = 2)
+hist(results_b[, 2], main = "Histogram của σ", xlab = "σ")
+abline(v = true_sigma, col = "red", lwd = 2)
+hist(results_b[, 3], main = "Histogram của ν", xlab = "ν")
+abline(v = true_nu, col = "red", lwd = 2)
+```
+
+#### c. Áp dụng quy trình EM ở câu (a) cho dữ liệu sự khác biệt về bức xạ mặt trời tối đa giữa hai vùng địa lý theo thời gian đã tạo ra dữ liệu (đã sắp xếp) sau:
+
+\[
+\begin{array}{c}
+-26.8, -3.6, -3.4, -1.2, 0.4, 1.3, 2.3, 2.7, 3.0, 3.2, 3.2, 3.6, 3.6,\\ 3.9, 4.2, 4.4, 6.0, 6.6, 6.7, 7.1, 8.1, 10.7, 24.0, 32.8
+\end{array}
+\]
+
+```{r}
+# Dữ liệu từ đề bài
+y <- c(-26.8, -3.6, -3.4, -1.2, 0.4, 1.3, 2.3, 2.7, 3.0, 3.2, 3.2, 3.6, 3.6,
+       3.9, 4.2, 4.4, 6.0, 6.6, 6.7, 7.1, 8.1, 10.7, 24.0, 32.8)
+
+# Tạo dữ liệu mô phỏng t-student
+mu_init <- mean(y)
+print(paste("Giá trị ban đầu của mu:", mu_init))
+sigma_init <- sd(y)
+print(paste("Giá trị ban đầu của sigma:", sigma_init))
+nu_init <- 5
+
+n_extra <- 200
+set.seed(456)
+t_samples <- rt(n_extra, df = nu_init)
+y_noise <- mu_init + sqrt(sigma_init) * t_samples
+y_combined <- c(y, y_noise)
+
+fit <- EM_t_student(y_combined, mu_init, sigma_init, nu_init, max_iter = 200)
+cat("Kết quả ước lượng:\n")
+cat("μ =", fit$mu, "\n")
+cat("σ =", fit$sigma, "\n")
+cat("ν =", fit$nu, "\n")
+```
+

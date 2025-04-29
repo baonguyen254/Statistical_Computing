@@ -1,0 +1,1251 @@
+---
+title: "CLUSTER: An Unsupervised Algorithm for Modeling Gaussian Mixtures"
+author: "TEAM B"
+output: html_document
+---
+
+
+# Giới thiệu và Bài toán
+
+## 1. Bài toán
+Phân cụm không giám sát sử dụng mô hình hỗn hợp Gaussian (Gaussian Mixture Model - GMM) nhằm:
+
+- Phân chia dữ liệu thành các nhóm (cụm) giả định tuân theo phân phối Gaussian.
+
+- Tự động xác định số lượng cụm tối ưu (không cần biết trước số cụm).
+
+- Ước tính các tham số của mỗi phân phối Gaussian (trọng số, trung bình, hiệp phương sai) trong mô hình.
+
+---
+
+## 2. Mô hình toán học
+
+### 2.1. Mô hình hỗn hợp Gaussian (GMM)
+Một mô hình GMM với $K$ thành phần được biểu diễn bởi hàm mật độ xác suất tổng hợp:
+$$
+p(y) = \sum_{k=1}^{K} \pi_k \mathcal{N}(y \mid \mu_k, R_k)
+$$
+Trong đó:
+
+- $\pi_k$: Trọng số (xác suất tiên nghiệm) của thành phần thứ $k$.
+
+- $\mu_k$: Vector trung bình của thành phần thứ $k$.
+
+- $R_k$: Ma trận hiệp phương sai (covariance) của thành phần thứ $k$.
+
+- $\mathcal{N}(y \mid \mu_k, R_k)$: Mật độ xác suất của phân phối chuẩn đa chiều với trung bình $\mu_k$ và hiệp phương sai $R_k$.
+
+---
+
+### 2.2. Thuật toán EM (Expectation-Maximization) cho GMM
+Để ước lượng tham số của mô hình GMM khi biết số cụm $K$, ta có thể sử dụng thuật toán EM:
+
+#### E-step (Expectation-step):
+Tính toán xác suất hậu nghiệm (responsibility) $\gamma_{nk}$ cho mỗi điểm dữ liệu $y_n$ thuộc cụm $k$:
+$$
+\gamma_{nk} = \frac{\pi_k \mathcal{N}(y_n \mid \mu_k, R_k)}{\sum_{j=1}^{K} \pi_j \mathcal{N}(y_n \mid \mu_j, R_j)}
+$$
+(Đây chính là xác suất điểm $y_n$ đến từ thành phần Gaussian $k$.)
+
+#### M-step (Maximization-step):
+Cập nhật các tham số của mô hình dựa trên $\gamma_{nk}$:
+
+1. Số điểm hiệu dụng của cụm $k$: $N_k = \sum_{n=1}^{N} \gamma_{nk}$.
+
+2. Cập nhật trọng số: $\pi_k^{\text{new}} = \frac{N_k}{N}$.
+
+3. Cập nhật trung bình: $\mu_k^{\text{new}} = \frac{1}{N_k} \sum_{n=1}^{N} \gamma_{nk} y_n$.
+
+4. Cập nhật hiệp phương sai:
+$$
+R_k^{\text{new}} = \frac{1}{N_k} \sum_{n=1}^{N} \gamma_{nk} (y_n - \mu_k^{\text{new}})(y_n - \mu_k^{\text{new}})^T
+$$
+Sau M-step, ta thường thêm một giá trị rất nhỏ vào đường chéo của $R_k^{\text{new}}$ (ví dụ $10^{-6}$) để đảm bảo ma trận hiệp phương sai không suy biến.
+
+---
+
+### 2.3. Tiêu chuẩn MDL (Minimum Description Length)
+Tiêu chuẩn MDL được sử dụng để đánh giá mô hình và xác định số lượng cụm tối ưu. MDL của mô hình GMM với $K$ cụm được tính:
+$$
+\text{MDL}(K) = -\sum_{n=1}^{N} \log\left(\sum_{k=1}^{K} \pi_k \mathcal{N}(y_n \mid \mu_k, R_k)\right) + \frac{1}{2} L \log(NM)
+$$
+Trong đó:
+
+- $N$ là số lượng điểm dữ liệu, $M$ là số chiều của dữ liệu.
+
+- $L$ là số tham số của mô hình cần ước lượng. Đối với GMM với $K$ cụm trong không gian $M$ chiều:
+$$
+L = K \times \left(1 + M + \frac{M(M+1)}{2}\right) - 1
+$$
+(bao gồm $K-1$ trọng số tự do, $K$ vector trung bình, và $K$ ma trận hiệp phương sai).
+
+MDL bao gồm hai phần: $-\ell$ (negative log-likelihood của dữ liệu) và phần penalty độ phức tạp mô hình $\frac{1}{2}L \log(NM)$. Số cụm tối ưu $K^*$ là giá trị $K$ làm giá trị MDL nhỏ nhất.
+
+---
+
+## 3. Thuật toán CLUSTER (Ước lượng số cụm tự động)
+Thuật toán CLUSTER (Bouman & Shapiro, 1994) là thuật toán phân cụm tự động cho mô hình GMM sử dụng kết hợp EM và chiến lược gộp cụm dựa trên tiêu chí MDL. Các bước chính của thuật toán như sau:
+
+### Bước 1: Khởi tạo
+- Chọn số cụm ban đầu lớn $K_0$ (lớn hơn số cụm kỳ vọng, ví dụ gấp 2-3 lần).
+
+- Khởi tạo tham số cho $K_0$ cụm:
+- Các trọng số $\pi_k = 1/K_0$.
+
+- Chọn ngẫu nhiên hoặc chọn $K_0$ điểm dữ liệu làm $\mu_k$.
+
+- Đặt các ma trận hiệp phương sai $R_k$ ban đầu bằng ma trận hiệp phương sai của toàn bộ dữ liệu.
+
+### Bước 2: EM phân cụm với $K_0$ cụm
+- Thực hiện EM (E-step và M-step luân phiên) cho mô hình $K_0$ cụm cho đến khi hội tụ.
+
+- Tính giá trị MDL của mô hình với $K_0$ cụm sau khi EM hội tụ.
+
+### Bước 3: Gộp cụm giảm số $K$
+Lặp lại quá trình sau cho $K = K_0, K_0 - 1, \dots, 1$:
+
+1. Xét tất cả các cặp cụm $(l, m)$ trong $K$ cụm. Với mỗi cặp, ước tính việc gộp hai cụm này thành một cụm mới $(l,m)$ với:
+
+- Trọng số: $\pi_{(l,m)} = \pi_l + \pi_m$.
+
+- Trung bình: $\mu_{(l,m)} = \frac{\pi_l \mu_l + \pi_m \mu_m}{\pi_l + \pi_m}$.
+
+- Hiệp phương sai:
+$$
+R_{(l,m)} = \frac{\pi_l \left(R_l + (\mu_l - \mu_{(l,m)})(\mu_l - \mu_{(l,m)})^T\right) + \pi_m \left(R_m + (\mu_m - \mu_{(l,m)})(\mu_m - \mu_{(l,m)})^T\right)}{\pi_l + \pi_m}
+$$
+2. Tạo mô hình tạm thời với $K-1$ cụm (thay thế hai cụm $l, m$ bằng cụm mới $(l,m)$).
+
+3. Tính giá trị MDL của mô hình tạm thời này.
+
+4. Chọn cặp $(l^*, m^*)$ có MDL nhỏ nhất sau khi gộp.
+
+5. Gộp cặp $(l^*, m^*)$ và thực hiện EM để tinh chỉnh tham số mô hình $K-1$ cụm.
+
+6. Lưu giá trị MDL của mô hình sau khi EM.
+
+### Bước 4: Chọn mô hình tối ưu
+Trong các mô hình đã xét từ $K_0$ cụm xuống đến 1 cụm, chọn mô hình có giá trị MDL nhỏ nhất. Số cụm tương ứng là $K^*$ (số cụm tối ưu).
+
+### Kết quả cuối cùng
+Thuật toán trả về:
+
+- Số cụm tối ưu $K^*$.
+
+- Bộ tham số $\{\pi_k, \mu_k, R_k\}$ cho mỗi $k = 1,\dots,K^*$.
+
+- Phân cụm dữ liệu: xác định cụm tương ứng của mỗi điểm dữ liệu (dựa trên xác suất posterior $\gamma_{nk}$ cao nhất).
+
+```{r setup, include=FALSE}
+# Required packages
+if (!require(viridis)) { install.packages("viridis", dependencies = TRUE) }
+if (!require(rmarkdown)) { install.packages("rmarkdown", dependencies = TRUE) }
+if (!require(languageserver)) { install.packages("languageserver", dependencies = TRUE) }
+if (!require(MASS)) { install.packages("MASS", dependencies = TRUE) }
+if (!require(mvtnorm)) { install.packages("mvtnorm", dependencies = TRUE) }
+if (!require(ggplot2)) { install.packages("ggplot2", dependencies = TRUE) }
+if (!require(scales)) { install.packages("scales", dependencies = TRUE) }
+if (!require(knitr)) { install.packages("knitr", dependencies = TRUE) }
+if (!require(dplyr)) { install.packages("dplyr", dependencies = TRUE) }
+# Load libraries
+library(viridis)      # for color
+library(rmarkdown)    # for html_notebook
+library(knitr)        # for tables
+library(MASS)         # for mvrnorm
+library(mvtnorm)      # for dmvnorm
+library(ggplot2)      # for visualization
+library(scales)       # for formatting axis labels
+library(dplyr)        # for data manipulation
+```
+
+```{r functions}
+# Cài đặt các hàm hỗ trợ cho thuật toán CLUSTER
+
+# Khởi tạo tham số GMM với K0 cụm
+initialize_gmm <- function(data, K0) {
+  N <- nrow(data)
+  D <- ncol(data)
+  # Trọng số ban đầu bằng nhau
+  pi <- rep(1 / K0, K0)
+  # Khởi tạo trung bình: chọn đều đặn K0 điểm dữ liệu làm trung bình ban đầu
+  means <- matrix(0, nrow = K0, ncol = D)
+  for (k in 1:K0) {
+    idx <- floor((k - 1) * (N - 1) / (K0 - 1)) + 1  # chọn chỉ số điểm cách đều
+    means[k,] <- data[idx,]
+  }
+  # Khởi tạo ma trận hiệp phương sai: dùng hiệp phương sai của toàn bộ dữ liệu
+  R <- array(0, dim = c(D, D, K0))
+  R_init <- cov(data)
+  for (k in 1:K0) {
+    R[, , k] <- R_init
+  }
+  return(list(pi = pi, means = means, R = R))
+}
+
+# E-step: Tính responsibilities gamma[n,k]
+e_step <- function(data, pi, means, R) {
+  N <- nrow(data); K <- length(pi)
+  gamma <- matrix(0, nrow = N, ncol = K)
+  for (k in 1:K) {
+    # tính mật độ gaussian cho tất cả điểm thuộc cụm k (dmvnorm cho ma trận data)
+    gamma[, k] <- pi[k] * dmvnorm(data, mean = means[k,], sigma = R[, , k])
+  }
+  # Chuẩn hóa để tổng mỗi hàng = 1 (xác suất hậu nghiệm)
+  gamma <- gamma / rowSums(gamma)
+  return(gamma)
+}
+
+# M-step: Cập nhật tham số pi, means, R từ responsibilities gamma
+m_step <- function(data, gamma) {
+  N <- nrow(data); D <- ncol(data); K <- ncol(gamma)
+  # N_k: số điểm hiệu dụng cho mỗi cụm
+  Nk <- colSums(gamma)
+  # Cập nhật trọng số pi
+  pi <- Nk / N
+  # Cập nhật trung bình
+  means <- t(gamma) %*% data / Nk  # K x D matrix (nhân gamma^T (KxN) với data (NxD))
+  # Cập nhật hiệp phương sai cho từng cụm
+  R <- array(0, dim = c(D, D, K))
+  for (k in 1:K) {
+    # hiệu chỉnh data trừ trung bình cụm k
+    diff <- sweep(data, 2, means[k,])
+    R[, , k] <- t(diff) %*% (diff * gamma[, k]) / Nk[k]
+    # Thêm một lượng rất nhỏ vào đường chéo để tránh ma trận singular
+    R[, , k] <- R[, , k] + diag(1e-6, D)
+  }
+  return(list(pi = pi, means = means, R = R, Nk = Nk))
+}
+
+# Tính tiêu chí MDL cho mô hình hiện tại
+calculate_mdl <- function(data, pi, means, R) {
+  N <- nrow(data); M <- ncol(data); K <- length(pi)
+  # Tính log-likelihood của dữ liệu dưới mô hình hiện tại
+  logLik <- 0
+  for (n in 1:N) {
+    # xác suất của điểm dữ liệu n dưới mô hình (tổng mật độ có trọng số)
+    dens_n <- 0
+    for (k in 1:K) {
+      dens_n <- dens_n + pi[k] * dmvnorm(data[n,], mean = means[k,], sigma = R[, , k])
+    }
+    logLik <- logLik + log(dens_n + 1e-12)  # cộng 1e-12 để tránh log(0)
+  }
+  # Số lượng tham số L
+  L <- K * (1 + M + M * (M + 1) / 2) - 1
+  # Tính MDL = - log-likelihood + 0.5 * L * log(N*M)
+  mdl <- -logLik + 0.5 * L * log(N * M)
+  return(mdl)
+}
+
+# Hàm gộp hai cụm l và m thành một cụm mới, trả về tham số mô hình sau khi gộp
+merge_two_clusters <- function(params, l, m) {
+  pi <- params$pi; means <- params$means; R <- params$R; Nk <- params$Nk
+  K <- length(pi); D <- ncol(means)
+  # Trọng số và hiệu số điểm của cụm mới (l,m)
+  pi_new <- pi[l] + pi[m]
+  N_lm <- Nk[l] + Nk[m]  # tổng số điểm hiệu dụng của hai cụm
+  # Trung bình mới (trung bình kết hợp có trọng số)
+  mu_new <- (Nk[l] * means[l,] + Nk[m] * means[m,]) / (N_lm)
+  # Hiệp phương sai mới (kết hợp hai cụm)
+  R_new <- (Nk[l] * (R[, , l] + (means[l,] - mu_new) %*% t(means[l,] - mu_new)) +
+    Nk[m] * (R[, , m] + (means[m,] - mu_new) %*% t(means[m,] - mu_new))) / N_lm
+  # Thêm regularization nhỏ để tránh singular
+  R_new <- R_new + diag(1e-6, D)
+  # Xây dựng mô hình mới sau khi gộp: K-1 cụm
+  new_pi <- pi[-m]        # bỏ cụm m
+  new_pi[l] <- pi_new     # thay phần tử l bằng pi_new
+  new_means <- means[-m,] # bỏ cụm m khỏi ma trận trung bình
+  # Ensure new_means remains a matrix after removing a row
+  new_means <- means[-m, , drop = FALSE] # Use drop = FALSE to prevent coercion to a vector
+  new_means[l,] <- mu_new # cập nhật trung bình cụm l thành mu_new
+  new_R <- R              # sử dụng mảng hiệp phương sai cũ để cập nhật
+  new_R <- R[, , -m, drop = FALSE]    # bỏ chiều thứ m
+  new_R[, , l] <- R_new     # cập nhật hiệp phương sai cho cụm l
+  return(list(pi = new_pi, means = new_means, R = new_R))
+}
+
+# Hàm tìm và gộp cặp cụm gần nhất (theo tiêu chí MDL tăng ít nhất)
+merge_closest_clusters <- function(data, params) {
+  K <- length(params$pi)
+  if (K <= 1) return(params)
+  best_mdl <- Inf
+  best_params <- NULL
+  # Duyệt qua mọi cặp (l, m), l < m
+  for (l in 1:(K - 1)) {
+    for (m in (l + 1):K) {
+      # Gộp tạm cặp (l, m)
+      merged_params <- merge_two_clusters(params, l, m)
+      # Tính MDL cho mô hình sau khi gộp (chưa chạy lại EM)
+      mdl_val <- calculate_mdl(data, merged_params$pi, merged_params$means, merged_params$R)
+      if (mdl_val < best_mdl) {
+        best_mdl <- mdl_val
+        best_params <- merged_params
+      }
+    }
+  }
+  # Sau khi thử tất cả cặp, chọn phương án gộp tốt nhất (best_params)
+  # Thêm tính toán N_k cho best_params (cần cho bước EM kế tiếp)
+  # Ta có thể tính xấp xỉ Nk mới: lấy pi_new * N cho mỗi cụm
+  if (!is.null(best_params)) {
+    N <- nrow(data)
+    best_params$Nk <- best_params$pi * N
+  }
+  return(best_params)
+}
+
+# Hàm chính thực hiện thuật toán CLUSTER
+gmm_cluster <- function(data, K0, max_iter = 100, tol = 1e-6) {
+  N <- nrow(data)
+  # Khởi tạo tham số với K0 cụm
+  params <- initialize_gmm(data, K0)
+  # Nếu initialize_gmm chưa cung cấp Nk, ta tính tạm Nk = pi * N
+  if (is.null(params$Nk)) params$Nk <- params$pi * N
+
+  mdl_values <- numeric(K0)        # lưu MDL cho mô hình từ K=1 đến K=K0
+  best_mdl <- Inf
+  best_params <- NULL
+  best_K <- K0
+
+  # Thực hiện từ K = K0 xuống K = 1
+  for (K in K0:1) {
+    # EM: tinh chỉnh tham số cho K cụm hiện tại
+    prev_logLik <- -Inf
+    for (iter in 1:max_iter) {
+      # E-step
+      gamma <- e_step(data, params$pi, params$means, params$R)
+      # M-step
+      params <- m_step(data, gamma)
+      # Tính log-likelihood tổng của dữ liệu cho mô hình hiện tại
+      current_logLik <- 0
+      for (n in 1:N) {
+        dens_n <- 0
+        for (k in 1:K) {
+          dens_n <- dens_n + params$pi[k] * dmvnorm(data[n,], mean = params$means[k,], sigma = params$R[, , k])
+        }
+        current_logLik <- current_logLik + log(dens_n + 1e-12)
+      }
+      # Kiểm tra hội tụ (log-likelihood tăng không đáng kể)
+      if (abs(current_logLik - prev_logLik) < tol) break
+      prev_logLik <- current_logLik
+    }
+    # Tính MDL cho mô hình K cụm sau khi EM hội tụ
+    mdl_values[K] <- calculate_mdl(data, params$pi, params$means, params$R)
+    # Cập nhật mô hình tốt nhất nếu MDL hiện tại nhỏ hơn
+    if (mdl_values[K] < best_mdl) {
+      best_mdl <- mdl_values[K]
+      best_params <- list(pi = params$pi, means = params$means, R = params$R)
+      best_K <- K
+    }
+    # Nếu còn có thể gộp (K > 1) thì tiến hành gộp một cặp cụm
+    if (K > 1) {
+      params <- merge_closest_clusters(data, params)
+      # Sau khi gộp, giảm K đi 1 (vòng lặp for sẽ giảm K)
+      # Tham số params đã cập nhật cho K-1 cụm sẽ được dùng trong vòng lặp tiếp theo
+    }
+  }
+
+  # Sau khi thử từ K0 đến 1, best_K là số cụm tối ưu, best_params là tham số tương ứng
+  # Tính trách nhiệm (responsibility) cuối cùng cho mô hình tối ưu để xác định cụm của mỗi điểm
+  gamma_best <- e_step(data, best_params$pi, best_params$means, best_params$R)
+  cluster_assignment <- apply(gamma_best, 1, which.max)
+
+  return(list(K_optimal = best_K, mdl_values = mdl_values, pi = best_params$pi,
+              means = best_params$means, R = best_params$R, assignment = cluster_assignment))
+}
+```
+
+```{r try_example}
+# Tạo dữ liệu mẫu gồm 3 cụm trong không gian 2 chiều
+# set.seed(42)
+# n_points <- 300
+# # Cụm 1: trung bình (0,0), hiệp phương sai đơn vị
+# cluster1 <- MASS::mvrnorm(n = 100, mu = c(0, 0), Sigma = matrix(c(1, 0, 0, 1), 2, 2))
+# # Cụm 2: trung bình (5,5), hiệp phương sai [[1.5,0.5],[0.5,1.5]]
+# cluster2 <- MASS::mvrnorm(n = 100, mu = c(5, 5), Sigma = matrix(c(1.5, 0.5, 0.5, 1.5), 2, 2))
+# # Cụm 3: trung bình (0,5), hiệp phương sai đơn vị
+# cluster3 <- MASS::mvrnorm(n = 100, mu = c(0, 5), Sigma = matrix(c(1, 0, 0, 1), 2, 2))
+# # Gom tất cả điểm dữ liệu
+# data <- rbind(cluster1, cluster2, cluster3)
+
+# tạo dữ liệu mẫu khác gồm 3 cụm nhiều noise hơn
+library(MASS)  # dùng mvrnorm để tạo mẫu từ phân phối Gaussian đa biến
+set.seed(123)  # cố định seed để kết quả tái lập
+
+# Tạo dữ liệu cho từng cụm
+mu1 <- c(0, 0)
+Sigma1 <- matrix(c(1, 0.8, 0.8, 1), nrow = 2)
+data1 <- mvrnorm(n = 150, mu = mu1, Sigma = Sigma1)
+
+mu2 <- c(1.5, 1.5)
+Sigma2 <- matrix(c(1.2, -0.6, -0.6, 1.2), nrow = 2)
+data2 <- mvrnorm(n = 150, mu = mu2, Sigma = Sigma2)
+
+mu3 <- c(0, 2)
+Sigma3 <- matrix(c(1.5, 0, 0, 1.5), nrow = 2)
+data3 <- mvrnorm(n = 150, mu = mu3, Sigma = Sigma3)
+
+# Ghép dữ liệu các cụm và tạo khung dữ liệu với nhãn cụm
+data_all <- rbind(data1, data2, data3)
+df <- data.frame(x = data_all[, 1], y = data_all[, 2],
+                 cluster = factor(rep(1:3, each = 150)))
+```
+
+```{r}
+# Trực quan dữ liệu gốc
+par(mfrow = c(1, 2))
+# Biểu đồ scatter của các điểm dữ liệu, tô màu theo cụm thực tế ban đầu
+plot(df$x, df$y, col = viridis(3)[df$cluster], pch = 20,
+     main = "Dữ liệu ban đầu (true clusters)",
+     xlab = "X", ylab = "Y")
+legend("topright", legend = c("Cluster 1", "Cluster 2", "Cluster 3"),
+       col = viridis(3), pch = 19, cex = 0.8)
+
+# Biểu đồ mật độ 2D của toàn bộ dữ liệu
+z <- kde2d(df$x, df$y, n = 100)
+image(z, col = viridis(100),
+      main = "Mật độ dữ liệu 2D",
+      xlab = "X", ylab = "Y")
+points(df$x, df$y, pch = 20, cex = 0.5)
+# Khôi phục layout cũ
+par(mfrow = c(1, 1))
+```
+
+```{r}
+# Chạy thuật toán CLUSTER với K0 = 6
+result <- gmm_cluster(data_all, K0 = 6, max_iter = 100, tol = 1e-6)
+
+# Kết quả: số cụm tối ưu và MDL tương ứng
+cat("Số cụm tối ưu K* =", result$K_optimal, "\n")
+```
+
+```{r}
+# Hiển thị các tham số của mô hình tối ưu
+K_opt <- result$K_optimal
+pi_opt <- result$pi
+means_opt <- result$means
+R_opt <- result$R
+
+# Bảng trọng số và trung bình của các cụm tối ưu
+param_table <- data.frame(
+  Cluster = 1:K_opt,
+  Weight = round(pi_opt, 3),
+  Mean_X = round(means_opt[, 1], 3),
+  Mean_Y = round(means_opt[, 2], 3)
+)
+cat("Bảng trọng số và trung bình các cụm:\n")
+knitr::kable(param_table, align = 'c')
+
+# Hiển thị ma trận hiệp phương sai của từng cụm
+for (k in 1:K_opt) {
+  cat(sprintf("Ma trận hiệp phương sai của Cluster %d:\n", k))
+  print(round(R_opt[, , k], 3))
+}
+```
+
+```{r}
+# Biểu đồ phân cụm thu được (mỗi điểm màu theo cụm gán bởi thuật toán)
+plot(df$x, df$y, col = viridis(result$K_optimal)[result$assignment], pch = 20,
+     main = paste("Kết quả phân cụm GMM (K* =", result$K_optimal, ")"),
+     xlab = "X", ylab = "Y")
+legend("topright", legend = paste("Cluster", 1:result$K_optimal),
+       col = viridis(result$K_optimal), pch = 19, cex = 0.8)
+
+# Biểu đồ MDL theo số cụm
+K0 <- length(result$mdl_values)
+plot(1:K0, result$mdl_values, type = "b",
+     xlab = "Số cụm (K)", ylab = "Giá trị MDL",
+     main = "MDL theo số cụm")
+points(result$K_optimal, result$mdl_values[result$K_optimal],
+       col = "red", pch = 19, cex = 1.2)
+```
+## Thử nghiệm trên dữ liệu mô phỏng
+
+### Dữ liệu mô phỏng 1
+
+```{r}
+# Tạo dữ liệu khởi tạo với các thông số:
+library(knitr)
+
+# Biểu diễn các parameters ban đầu
+table_data <- data.frame(
+  Cluster = c("Cluster 1", "", "", "",
+              "Cluster 2", "", "", "",
+              "Cluster 3", "", "", ""),
+  Parameter = c("π₁", "μ₁", "R₁ row 1", "R₁ row 2",
+                "π₂", "μ₂", "R₂ row 1", "R₂ row 2",
+                "π₃", "μ₃", "R₃ row 1", "R₃ row 2"),
+  `True Value` = c(
+    "0.33", "[0 0]", "[1 0.8]", "[0.8 1]",
+    "0.33", "[1.5 1.5]", "[1.2 -0.6]", "[-0.6 1.2]",
+    "0.33", "[0 2]", "[1.5 0]", "[0 1.5]"
+  )
+)
+
+# In bảng
+kable(table_data, align = "l")
+
+```
+
+
+```{r}
+
+library(MASS)  # dùng mvrnorm để tạo mẫu từ phân phối Gaussian đa biến
+set.seed(123)  # cố định seed để kết quả tái lập
+
+# Tạo dữ liệu cho từng cụm
+mu1 <- c(0, 0)
+Sigma1 <- matrix(c(1, 0.8, 0.8, 1), nrow = 2)
+data1 <- mvrnorm(n = 150, mu = mu1, Sigma = Sigma1)
+
+mu2 <- c(1.5, 1.5)
+Sigma2 <- matrix(c(1.2, -0.6, -0.6, 1.2), nrow = 2)
+data2 <- mvrnorm(n = 150, mu = mu2, Sigma = Sigma2)
+
+mu3 <- c(0, 2)
+Sigma3 <- matrix(c(1.5, 0, 0, 1.5), nrow = 2)
+data3 <- mvrnorm(n = 150, mu = mu3, Sigma = Sigma3)
+
+# Ghép dữ liệu các cụm và tạo khung dữ liệu với nhãn cụm
+data_all <- rbind(data1, data2, data3)
+df <- data.frame(x = data_all[, 1], y = data_all[, 2],
+                 cluster = factor(rep(1:3, each = 150)))
+head(data_all)
+head(df)
+
+
+```
+
+```{r}
+# Trực quan dữ liệu gốc
+# Biểu đồ scatter của các điểm dữ liệu, tô màu theo cụm thực tế ban đầu
+plot(df$x, df$y, col = viridis(3)[df$cluster], pch = 20,
+     main = "Dữ liệu ban đầu (true clusters)",
+     xlab = "X", ylab = "Y")
+legend("topright", legend = c("Cluster 1", "Cluster 2", "Cluster 3"),
+       col = viridis(3), pch = 19, cex = 0.8)
+
+
+```
+
+```{r}
+
+# Chạy thuật toán CLUSTER với K0 = 6
+result <- gmm_cluster(data_all, K0 = 6, max_iter = 100, tol = 1e-6)
+
+# Kết quả: số cụm tối ưu và MDL tương ứng
+cat("Số cụm tối ưu K* =", result$K_optimal, "\n")
+
+# Hiển thị các tham số của mô hình tối ưu
+K_opt <- result$K_optimal
+pi_opt <- result$pi
+means_opt <- result$means
+R_opt <- result$R
+
+# Bảng trọng số và trung bình của các cụm tối ưu
+param_table <- data.frame(
+  Cluster = 1:K_opt,
+  Weight = round(pi_opt, 3),
+  Mean_X = round(means_opt[, 1], 3),
+  Mean_Y = round(means_opt[, 2], 3)
+)
+cat("Bảng trọng số và trung bình các cụm:\n")
+knitr::kable(param_table, align = 'c')
+
+# Hiển thị ma trận hiệp phương sai của từng cụm
+for (k in 1:K_opt) {
+  cat(sprintf("Ma trận hiệp phương sai của Cluster %d:\n", k))
+  print(round(R_opt[, , k], 3))
+}
+
+```
+
+
+```{r}
+
+# Biểu đồ phân cụm thu được (mỗi điểm màu theo cụm gán bởi thuật toán)
+plot(df$x, df$y, col = viridis(result$K_optimal)[result$assignment], pch = 20,
+     main = paste("Kết quả phân cụm GMM (K* =", result$K_optimal, ")"),
+     xlab = "X", ylab = "Y")
+legend("topright", legend = paste("Cluster", 1:result$K_optimal),
+       col = viridis(result$K_optimal), pch = 19, cex = 0.8)
+
+# Biểu đồ MDL theo số cụm
+K0 <- length(result$mdl_values)
+plot(1:K0, result$mdl_values, type = "b",
+     xlab = "Số cụm (K)", ylab = "Giá trị MDL",
+     main = "MDL theo số cụm")
+points(result$K_optimal, result$mdl_values[result$K_optimal],
+       col = "red", pch = 19, cex = 1.2)
+
+
+```
+
+
+Các cụm ban đầu có dữ liệu đan xen vào nhau, gây nhiễu và khiến cho model khó phân biệt được các cụm. Do đó, thay vì phân thành 3 cụm với các cụm đan xen như dữ liệu gốc, mô hình phân thành 2 cụm, và dữ liệu các cụm không đan xen với nhau.
+
+
+
+### Dữ liệu mô phỏng 2 - Iris
+
+
+```{r iris_data}
+
+data(iris)
+
+# Ghép dữ liệu các cụm và tạo khung dữ liệu với nhãn cụm
+data_all <- as.matrix(iris[, 1:4])
+df <- iris
+head(df)
+
+```
+
+##### Feature engineering
+
+```{r feature_engineering}
+# Install the 'plotly' package
+# if install fail, please try:
+# apt-get install -y libcurl4-openssl-dev libssl-dev
+# apt-get install -y pkg-config
+if (!require(plotly)) { install.packages("plotly", repos = "https://cloud.r-project.org/")
+  install.packages(c("htmlwidgets", "crosstalk", "ggplot2", "jsonlite")) }
+# Load the 'plotly' library
+library(plotly)
+# Use R's built-in iris dataset (adjust column names if yours differ)
+iris <- iris %>%
+  rename(SepalLengthCm = Sepal.Length,
+         SepalWidthCm = Sepal.Width,
+         PetalLengthCm = Petal.Length,
+         PetalWidthCm = Petal.Width)
+
+# Define custom colors
+custom_colors <- c('#29066B', '#7D3AC1', '#EB548C')
+
+# Create each plot
+p1 <- plot_ly(iris, x = ~Species, y = ~SepalLengthCm, type = "box", color = ~Species, colors = custom_colors, legendgroup = "group") %>%
+  layout(title = "Sepal Length")
+
+p2 <- plot_ly(iris, x = ~Species, y = ~SepalWidthCm, type = "box", color = ~Species, colors = custom_colors, legendgroup = "group") %>%
+  layout(title = "Sepal Width")
+
+p3 <- plot_ly(iris, x = ~Species, y = ~PetalLengthCm, type = "box", color = ~Species, colors = custom_colors, legendgroup = "group") %>%
+  layout(title = "Petal Length")
+
+p4 <- plot_ly(iris, x = ~Species, y = ~PetalWidthCm, type = "box", color = ~Species, colors = custom_colors, legendgroup = "group") %>%
+  layout(title = "Petal Width")
+
+subplot(p1, p2, p3, p4, nrows = 2, margin = 0.05, titleX = TRUE, titleY = TRUE, shareX = TRUE, shareY = FALSE)
+
+```
+
+- Sepal Length: Setosa thấp hơn hẳn Versicolor và Virginica. Tuy nhiên, có sự chồng lấn giữa Versicolor và Virginica, sẽ gây nhiễu cho mô hình trong việc phân loại chúng. Ngoài ra Virginica cũng có giá trị ngoại lai, có thể dễ bị phân loại nhầm sang 2 cụm còn lại.
+
+- Sepal Width: Biến này ở Setosa chứa giá trị ngoại lai, và vẫn có sự chồng lấn gây khó phân loại giữa Versicolor và Virginica.
+
+- Petal Length: Setosa thấp hơn hẳn 2 cụm còn lại. Có sự chồng lẫn giữa Versicolor và Virginica, tuy nhiên không nhiều như chồng lấn ở Sepal Length và Sepal Width.
+
+- Petal Width: Setosa thấp hơn hẳn, và Virginica cao hơn hẳn 2 cụm còn lại. Có sự chồng lẫn giữa Versicolor và Virginica, tuy nhiên không nhiều như chồng lấn ở Sepal Length và Sepal Width.
+
+=> Có thể thấy, Petal Length và Petal Width là các thuộc tính hữu ích hơn hẳn Sepal Length và Sepal Width trong việc phân cụm.
+
+```{r}
+
+# Trực quan dữ liệu gốc
+# Biểu đồ scatter của các điểm dữ liệu, tô màu theo cụm thực tế ban đầu
+plot(df$Petal.Length, df$Petal.Width, col = viridis(3)[df$Species], pch = 20,
+     main = "Dữ liệu ban đầu (true clusters)",
+     xlab = "Petal Length", ylab = "Petal Width")
+legend("bottomright", legend = c("setosa", "versicolor", "virginica"),
+       col = viridis(3), pch = 19, cex = 0.8)
+
+```
+
+
+
+
+```{r}
+
+# Chạy thuật toán CLUSTER với K0 = 6
+result <- gmm_cluster(data_all, K0 = 6, max_iter = 100, tol = 1e-6)
+
+# Kết quả: số cụm tối ưu và MDL tương ứng
+cat("Số cụm tối ưu K* =", result$K_optimal, "\n")
+
+# Hiển thị các tham số của mô hình tối ưu
+K_opt <- result$K_optimal
+pi_opt <- result$pi
+means_opt <- result$means
+R_opt <- result$R
+
+# Bảng trọng số và trung bình của các cụm tối ưu
+param_table <- data.frame(
+  Cluster = 1:K_opt,
+  Weight = round(pi_opt, 3),
+  Mean_X = round(means_opt[, 1], 3),
+  Mean_Y = round(means_opt[, 2], 3)
+)
+cat("Bảng trọng số và trung bình các cụm:\n")
+knitr::kable(param_table, align = 'c')
+
+# Hiển thị ma trận hiệp phương sai của từng cụm
+for (k in 1:K_opt) {
+  cat(sprintf("Ma trận hiệp phương sai của Cluster %d:\n", k))
+  print(round(R_opt[, , k], 3))
+}
+
+
+
+```
+
+
+```{r}
+# Biểu đồ phân cụm thu được (mỗi điểm màu theo cụm gán bởi thuật toán)
+plot(df$Petal.Length, df$Petal.Width, col = viridis(result$K_optimal)[result$assignment], pch = 20,
+     main = paste("Kết quả phân cụm GMM (K* =", result$K_optimal, ")"),
+     xlab = "Petal Length", ylab = "Petal Width")
+legend("bottomright", legend = paste("Cluster", 1:result$K_optimal),
+       col = viridis(result$K_optimal), pch = 19, cex = 0.8)
+
+
+
+# Biểu đồ MDL theo số cụm
+K0 <- length(result$mdl_values)
+plot(1:K0, result$mdl_values, type = "b",
+     xlab = "Số cụm (K)", ylab = "Giá trị MDL",
+     main = "MDL theo số cụm")
+points(result$K_optimal, result$mdl_values[result$K_optimal],
+       col = "red", pch = 19, cex = 1.2)
+
+
+```
+
+
+Tương tự như dữ liệu mô phỏng 1, Iris cũng có các điểm dữ liệu gây nhiễu, và cũng có 2 cụm dữ liệu đan xen vào nhau. Do đó, mô hình đã nhận định rằng bộ dữ liệu này được chia thành 2 cụm thay vì 3 cụm như dữ liệu gốc.
+
+
+
+### Dữ liệu mô phỏng 3 - Tương ứng với ví dụ 1 trong tài liệu tham khảo
+
+```{r}
+# Tạo dữ liệu khởi tạo với các thông số:
+
+# Simple parameter display
+table_data <- data.frame(
+  Cluster = c("Cluster 1", "", "", "",
+              "Cluster 2", "", "", "",
+              "Cluster 3", "", "", ""),
+  Parameter = c("π₁", "μ₁", "R₁ row 1", "R₁ row 2",
+                "π₂", "μ₂", "R₂ row 1", "R₂ row 2",
+                "π₃", "μ₃", "R₃ row 1", "R₃ row 2"),
+  `True Value` = c(
+    "0.4", "[2 2]", "[1 0.1]", "[0.1 1]",
+    "0.4", "[-2 -2]", "[1 -0.1]", "[-0.1 1]",
+    "0.2", "[5.5 2]", "[1 0.2]", "[0.2 0.5]"
+  )
+)
+
+# Print the table
+kable(table_data, align = "l")
+```
+
+
+
+```{r}
+
+
+set.seed(42)
+N <- 500
+K_true <- 3
+pi_true <- c(0.4, 0.4, 0.2)
+mu_true <- list(c(2, 2), c(-2, -2), c(5.5, 2))
+R1 <- matrix(c(1, 0.1, 0.1, 1), nrow = 2, byrow = TRUE)
+R2 <- matrix(c(1, -0.1, -0.1, 1), nrow = 2, byrow = TRUE)
+R3 <- matrix(c(1, 0.2, 0.2, 0.5), nrow = 2, byrow = TRUE)
+
+Sigma_true <- list(R1, R2, R3)
+
+
+z <- sample(1:K_true, N, replace = TRUE, prob = pi_true)
+data_all <- do.call(rbind, lapply(1:N, function(i) mvrnorm(1, mu_true[[z[i]]], Sigma_true[[z[i]]])))
+df <- data.frame(x = data_all[, 1], y = data_all[, 2], cluster = z)
+head(df)
+head(data_all)
+```
+
+
+
+```{r}
+# Trực quan dữ liệu gốc
+# Biểu đồ scatter của các điểm dữ liệu, tô màu theo cụm thực tế ban đầu
+plot(df$x, df$y, col = viridis(3)[df$cluster], pch = 20,
+     main = "Dữ liệu ban đầu (true clusters)",
+     xlab = "X", ylab = "Y")
+legend("bottomright", legend = c("Cluster 1", "Cluster 2", "Cluster 3"),
+       col = viridis(3), pch = 19, cex = 0.8)
+```
+
+
+
+
+```{r}
+
+# Chạy thuật toán CLUSTER với K0 = 6
+result <- gmm_cluster(data_all, K0 = 6, max_iter = 100, tol = 1e-6)
+
+# Kết quả: số cụm tối ưu và MDL tương ứng
+cat("Số cụm tối ưu K* =", result$K_optimal, "\n")
+
+# Hiển thị các tham số của mô hình tối ưu
+K_opt <- result$K_optimal
+pi_opt <- result$pi
+means_opt <- result$means
+R_opt <- result$R
+
+# Bảng trọng số và trung bình của các cụm tối ưu
+param_table <- data.frame(
+  Cluster = 1:K_opt,
+  Weight = round(pi_opt, 3),
+  Mean_X = round(means_opt[, 1], 3),
+  Mean_Y = round(means_opt[, 2], 3)
+)
+cat("Bảng trọng số và trung bình các cụm:\n")
+knitr::kable(param_table, align = 'c')
+
+# Hiển thị ma trận hiệp phương sai của từng cụm
+for (k in 1:K_opt) {
+  cat(sprintf("Ma trận hiệp phương sai của Cluster %d:\n", k))
+  print(round(R_opt[, , k], 3))
+}
+
+
+
+```
+
+
+Note: Mặc dù cho ra kết quả phân cụm đúng, nhưng đôi khi thứ tự của các cụm bị đảo ngược sau khi sử dụng mô hình GMM, gây ra sự không tiện lợi khi so sánh kết quả giữa dữ liệu gốc và dữ liệu được dự đoán từ mô hình. Do đó, ta có thể đảo lại thứ tự của các cụm cho đúng.
+
+
+```{r}
+table(True = df$cluster, Predicted = result$assignment)
+
+#GMM cluster 1 = true 3, 2 = true 1, 3 = true 2
+remap <- c(3, 1, 2)
+adjusted_assignment <- remap[result$assignment]
+
+```
+
+
+```{r}
+reverse_map <- match(1:K_opt, remap)
+
+pi_opt_reordered <- pi_opt[reverse_map]
+means_opt_reordered <- result$means[reverse_map, , drop = FALSE]
+R_opt_reordered <- result$R[, , reverse_map]
+
+param_table <- data.frame(
+  Cluster = 1:K_opt,
+  Weight = round(pi_opt_reordered, 3),
+  Mean_X = round(means_opt_reordered[, 1], 3),
+  Mean_Y = round(means_opt_reordered[, 2], 3)
+)
+
+cat("Bảng trọng số và trung bình (đã khớp theo cụm gốc):\n")
+knitr::kable(param_table, align = 'c')
+
+for (k in 1:K_opt) {
+  cat(sprintf("Ma trận hiệp phương sai của Cluster %d (theo gốc):\n", k))
+  print(round(R_opt_reordered[, , k], 3))
+}
+```
+
+
+
+```{r}
+# Biểu đồ phân cụm thu được (mỗi điểm màu theo cụm gán bởi thuật toán)
+plot(df$x, df$y, col = viridis(result$K_optimal)[adjusted_assignment], pch = 20,
+     main = paste("Kết quả phân cụm GMM (K* =", result$K_optimal, ")"),
+     xlab = "X", ylab = "Y")
+legend("bottomright", legend = paste("Cluster", 1:result$K_optimal),
+       col = viridis(result$K_optimal), pch = 19, cex = 0.8)
+
+# Biểu đồ MDL theo số cụm
+K0 <- length(result$mdl_values)
+plot(1:K0, result$mdl_values, type = "b",
+     xlab = "Số cụm (K)", ylab = "Giá trị MDL",
+     main = "MDL theo số cụm")
+points(result$K_optimal, result$mdl_values[result$K_optimal],
+       col = "red", pch = 19, cex = 1.2)
+
+
+
+```
+
+Mô hình đã phân loại đúng rằng dữ liệu mô phỏng có 3 cụm. Mặc dù mô hình có tỉ lệ phân loại đúng cao, nhưng vẫn tồn tại 1 số điểm dữ liệu gây nhiễu khiến mô hình phân loại chưa đúng.
+
+
+
+### Dữ liệu mô phỏng 4 - Tương ứng với ví dụ 2 trong tài liệu tham khảo
+
+Bộ dữ liệu gồm: Tập Training 1, Tập Training 2, và Tập Test được kết hợp từ tập training 1 và 2
+
+
+```{r}
+
+## Training Data 1
+
+data_all <- read.table("TrainingData1", header = FALSE)
+colnames(data_all) <- NULL
+data_all <- as.matrix(data_all)
+head(data_all)
+
+
+```
+
+
+
+```{r}
+
+# Chạy thuật toán CLUSTER với K0 = 6
+result <- gmm_cluster(data_all, K0 = 6, max_iter = 100, tol = 1e-6)
+
+# Kết quả: số cụm tối ưu và MDL tương ứng
+cat("Số cụm tối ưu K* =", result$K_optimal, "\n")
+
+# Hiển thị các tham số của mô hình tối ưu
+K_opt <- result$K_optimal
+pi_opt <- result$pi
+means_opt <- result$means
+R_opt <- result$R
+
+# Bảng trọng số và trung bình của các cụm tối ưu
+param_table <- data.frame(
+  Cluster = 1:K_opt,
+  Weight = round(pi_opt, 3),
+  Mean_X = round(means_opt[, 1], 3),
+  Mean_Y = round(means_opt[, 2], 3)
+)
+cat("Bảng trọng số và trung bình các cụm:\n")
+knitr::kable(param_table, align = 'c')
+
+# Hiển thị ma trận hiệp phương sai của từng cụm
+for (k in 1:K_opt) {
+  cat(sprintf("Ma trận hiệp phương sai của Cluster %d:\n", k))
+  print(round(R_opt[, , k], 3))
+}
+
+
+
+```
+
+
+```{r}
+# Biểu đồ phân cụm thu được (mỗi điểm màu theo cụm gán bởi thuật toán)
+plot(data_all[, 1], data_all[, 2], col = viridis(result$K_optimal)[result$assignment], pch = 20,
+     main = paste("Kết quả phân cụm GMM (K* =", result$K_optimal, ")"),
+     xlab = "X", ylab = "Y")
+legend("bottomright", legend = paste("Cluster", 1:result$K_optimal),
+       col = viridis(result$K_optimal), pch = 19, cex = 0.8)
+
+# Biểu đồ MDL theo số cụm
+K0 <- length(result$mdl_values)
+plot(1:K0, result$mdl_values, type = "b",
+     xlab = "Số cụm (K)", ylab = "Giá trị MDL",
+     main = "MDL theo số cụm")
+points(result$K_optimal, result$mdl_values[result$K_optimal],
+       col = "red", pch = 19, cex = 1.2)
+
+head(data_all)
+
+
+```
+
+Kết quả: Mô hình phân loại được 3 cụm, khớp với dữ liệu nhập vào ban đầu.
+
+
+```{r}
+## Training Data 2
+
+data_all <- read.table("TrainingData2", header = FALSE)
+colnames(data_all) <- NULL
+data_all <- as.matrix(data_all)
+head(data_all)
+
+
+```
+
+
+
+```{r}
+
+# Chạy thuật toán CLUSTER với K0 = 6
+result <- gmm_cluster(data_all, K0 = 6, max_iter = 100, tol = 1e-6)
+
+# Kết quả: số cụm tối ưu và MDL tương ứng
+cat("Số cụm tối ưu K* =", result$K_optimal, "\n")
+
+# Hiển thị các tham số của mô hình tối ưu
+K_opt <- result$K_optimal
+pi_opt <- result$pi
+means_opt <- result$means
+R_opt <- result$R
+
+# Bảng trọng số và trung bình của các cụm tối ưu
+param_table <- data.frame(
+  Cluster = 1:K_opt,
+  Weight = round(pi_opt, 3),
+  Mean_X = round(means_opt[, 1], 3),
+  Mean_Y = round(means_opt[, 2], 3)
+)
+cat("Bảng trọng số và trung bình các cụm:\n")
+knitr::kable(param_table, align = 'c')
+
+# Hiển thị ma trận hiệp phương sai của từng cụm
+for (k in 1:K_opt) {
+  cat(sprintf("Ma trận hiệp phương sai của Cluster %d:\n", k))
+  print(round(R_opt[, , k], 3))
+}
+
+
+
+```
+
+
+```{r}
+# Biểu đồ phân cụm thu được (mỗi điểm màu theo cụm gán bởi thuật toán)
+plot(data_all[, 1], data_all[, 2], col = viridis(result$K_optimal)[result$assignment], pch = 20,
+     main = paste("Kết quả phân cụm GMM (K* =", result$K_optimal, ")"),
+     xlab = "X", ylab = "Y")
+legend("bottomright", legend = paste("Cluster", 1:result$K_optimal),
+       col = viridis(result$K_optimal), pch = 19, cex = 0.8)
+
+# Biểu đồ MDL theo số cụm
+K0 <- length(result$mdl_values)
+plot(1:K0, result$mdl_values, type = "b",
+     xlab = "Số cụm (K)", ylab = "Giá trị MDL",
+     main = "MDL theo số cụm")
+points(result$K_optimal, result$mdl_values[result$K_optimal],
+       col = "red", pch = 19, cex = 1.2)
+
+head(data_all)
+
+
+```
+
+Kết quả: Mô hình phân loại được 3 cụm, khớp với dữ liệu nhập vào ban đầu.
+```{r}
+
+## Testing Data
+
+data_all <- read.table("TestingData", header = FALSE)
+colnames(data_all) <- NULL
+data_all <- as.matrix(data_all)
+head(data_all)
+
+
+```
+
+
+
+```{r}
+
+# Chạy thuật toán CLUSTER với K0 = 6
+result <- gmm_cluster(data_all, K0 = 6, max_iter = 100, tol = 1e-6)
+
+# Kết quả: số cụm tối ưu và MDL tương ứng
+cat("Số cụm tối ưu K* =", result$K_optimal, "\n")
+
+# Hiển thị các tham số của mô hình tối ưu
+K_opt <- result$K_optimal
+pi_opt <- result$pi
+means_opt <- result$means
+R_opt <- result$R
+
+# Bảng trọng số và trung bình của các cụm tối ưu
+param_table <- data.frame(
+  Cluster = 1:K_opt,
+  Weight = round(pi_opt, 3),
+  Mean_X = round(means_opt[, 1], 3),
+  Mean_Y = round(means_opt[, 2], 3)
+)
+cat("Bảng trọng số và trung bình các cụm:\n")
+knitr::kable(param_table, align = 'c')
+
+# Hiển thị ma trận hiệp phương sai của từng cụm
+for (k in 1:K_opt) {
+  cat(sprintf("Ma trận hiệp phương sai của Cluster %d:\n", k))
+  print(round(R_opt[, , k], 3))
+}
+
+
+
+```
+
+
+```{r}
+# Biểu đồ phân cụm thu được (mỗi điểm màu theo cụm gán bởi thuật toán)
+plot(data_all[, 1], data_all[, 2], col = viridis(result$K_optimal)[result$assignment], pch = 20,
+     main = paste("Kết quả phân cụm GMM (K* =", result$K_optimal, ")"),
+     xlab = "X", ylab = "Y")
+legend("bottomright", legend = paste("Cluster", 1:result$K_optimal),
+       col = viridis(result$K_optimal), pch = 19, cex = 0.8)
+
+# Biểu đồ MDL theo số cụm
+K0 <- length(result$mdl_values)
+plot(1:K0, result$mdl_values, type = "b",
+     xlab = "Số cụm (K)", ylab = "Giá trị MDL",
+     main = "MDL theo số cụm")
+points(result$K_optimal, result$mdl_values[result$K_optimal],
+       col = "red", pch = 19, cex = 1.2)
+
+head(data_all)
+
+
+```
+
+=> Data Testing được ghép từ Data Training 1 và Data Traning 2, nên sẽ có 6 cụm. Tuy nhiên, do độ nhiễu của data lớn, nên mô hình trả về kết quả phân loại với 5 cụm.
+
+## Thử nghiệm trên Data thực tế
+Data thực tế được sử dụng trong bài này là tập dữ liệu về nhà ở California (housing.csv) từ trang Kaggle. Tập dữ liệu này chứa thông tin về giá nhà, thu nhập, vị trí địa lý và nhiều yếu tố khác.
+
+```{r try_real_data}
+# Đọc dữ liệu từ file CSV
+path <- "dataset/housing.csv"
+data_real <- read.csv(path, header = TRUE)
+
+# chọn các cột MedInc, Latitude, Longitude để cluster
+data_real <- data_real[, c("median_income", "latitude", "longitude")]
+# # Chọn ngẫu nhiên 500 điểm dữ liệu từ tập dữ liệu lớn
+# set.seed(123)  # cố định seed để tái lập kết quả
+# data_real <- data_real[sample(1:nrow(data_real), 20000), ]
+
+# Kiểm tra dữ liệu
+cat("Kích thước dữ liệu:", dim(data_real), "\n")
+cat("Kiểm tra NA:", any(is.na(data_real)), "\n")
+cat("Xem trước dữ liệu:\n")
+print(head(data_real))
+# Chuyển đổi thành ma trận
+data_real <- as.matrix(data_real)
+```
+
+```{r}
+# Chạy thuật toán CLUSTER với K0 = 6
+result_real <- gmm_cluster(data_real, K0 = 6, max_iter = 100, tol = 1e-6)
+
+# Kết quả: số cụm tối ưu và MDL tương ứng
+cat("Số cụm tối ưu K* =", result_real$K_optimal, "\n")
+# Hiển thị các tham số của mô hình tối ưu
+K_opt_real <- result_real$K_optimal
+pi_opt_real <- result_real$pi
+means_opt_real <- result_real$means
+R_opt_real <- result_real$R
+
+# Bảng trọng số và trung bình của các cụm tối ưu
+param_table_real <- data.frame(
+  Cluster = 1:K_opt_real,
+  Weight = round(pi_opt_real, 3),
+  Mean_MedInc = round(means_opt_real[, 1], 3),
+  Mean_Latitude = round(means_opt_real[, 2], 3),
+  Mean_Longitude = round(means_opt_real[, 3], 3)
+)
+cat("Bảng trọng số và trung bình các cụm:\n")
+knitr::kable(param_table_real, align = 'c')
+
+# Hiển thị ma trận hiệp phương sai của từng cụm
+for (k in 1:K_opt_real) {
+  cat(sprintf("Ma trận hiệp phương sai của Cluster %d:\n", k))
+  print(round(R_opt_real[, , k], 3))
+}
+
+# Biểu đồ phân cụm thu được (mỗi điểm màu theo cụm gán bởi thuật toán)
+plot(data_real[, 2], data_real[, 3], col = viridis(result_real$K_optimal)[result_real$assignment], pch = 20,
+     main = paste("Kết quả phân cụm GMM (K* =", result_real$K_optimal, ")"),
+     xlab = "Latitude", ylab = "Longitude")
+legend("topright", legend = paste("Cluster", 1:result_real$K_optimal),
+       col = viridis(result_real$K_optimal), pch = 19, cex = 0.8)
+# Biểu đồ MDL theo số cụm
+plot(1:K0, result_real$mdl_values, type = "b",
+     xlab = "Số cụm (K)", ylab = "Giá trị MDL",
+     main = "MDL theo số cụm")
+points(result_real$K_optimal, result_real$mdl_values[result_real$K_optimal],
+       col = "red", pch = 19, cex = 1.2)
+```
+
+```{r try_real_data_pricing}
+# Đọc dữ liệu
+path <- "dataset/pricing.csv"
+data_real <- read.csv(path, header = TRUE)
+
+# Kiểm tra các cột
+if (!all(c("price", "area") %in% colnames(data_real))) {
+  stop("File pricing.csv phải chứa các cột 'price' và 'area'")
+}
+
+# Chọn các cột price và area
+data_real <- data_real[, c("price", "area")]
+
+# Kiểm tra dữ liệu
+cat("Kích thước dữ liệu:", dim(data_real), "\n")
+cat("Kiểm tra NA:", any(is.na(data_real)), "\n")
+cat("Xem trước dữ liệu:\n")
+print(head(data_real))
+
+# Loại bỏ NA nếu có
+data_real <- na.omit(data_real)
+
+# Chuyển thành ma trận
+data_real <- as.matrix(data_real)
+
+# Kiểm tra số cột
+if (ncol(data_real) != 2) {
+  stop("Dữ liệu phải có đúng 2 cột: price và area")
+}
+
+# Chuẩn hóa dữ liệu (tùy chọn, để cải thiện kết quả GMM)
+data_real <- scale(data_real)
+
+# Chạy thuật toán GMM CLUSTER với K0 = 5 (high, medium, low)
+K0 <- 5
+result_real <- gmm_cluster(data_real, K0 = K0, max_iter = 100, tol = 1e-6)
+
+# Kết quả: số cụm tối ưu và MDL tương ứng
+cat("Số cụm tối ưu K* =", result_real$K_optimal, "\n")
+
+# Hiển thị các tham số của mô hình tối ưu
+K_opt_real <- result_real$K_optimal
+pi_opt_real <- result_real$pi
+means_opt_real <- result_real$means
+R_opt_real <- result_real$R
+
+# Gán nhãn cụm dựa trên giá trung bình (price)
+cluster_labels <- c("Low", "Medium", "High")
+ordered_clusters <- order(means_opt_real[, 1]) # Sắp xếp theo price
+label_map <- cluster_labels[ordered_clusters]
+
+# Bảng trọng số và trung bình của các cụm tối ưu
+param_table_real <- data.frame(
+  Cluster = label_map,
+  Weight = round(pi_opt_real, 3),
+  Mean_Price = round(means_opt_real[, 1], 3),
+  Mean_Area = round(means_opt_real[, 2], 3)
+)
+cat("Bảng trọng số và trung bình các cụm:\n")
+knitr::kable(param_table_real, align = 'c')
+
+# Hiển thị ma trận hiệp phương sai của từng cụm
+for (k in 1:K_opt_real) {
+  cat(sprintf("Ma trận hiệp phương sai của Cluster %s:\n", label_map[k]))
+  print(round(R_opt_real[, , k], 3))
+}
+
+# Biểu đồ phân cụm thu được
+plot(data_real[, 2], data_real[, 1], col = viridis(result_real$K_optimal)[result_real$assignment], pch = 20,
+     main = paste("Kết quả phân cụm GMM (K* =", result_real$K_optimal, ")"),
+     xlab = "Area", ylab = "Price")
+legend("topright", legend = label_map,
+       col = viridis(result_real$K_optimal), pch = 19, cex = 0.8)
+
+# Biểu đồ MDL theo số cụm
+plot(1:K0, rep(0, K0), type = "b",
+     xlab = "Số cụm (K)", ylab = "Giá trị MDL",
+     main = "MDL theo số cụm")
+points(result_real$K_optimal, 0, col = "red", pch = 19, cex = 1.2)
+```
+
